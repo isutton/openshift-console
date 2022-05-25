@@ -91,6 +91,15 @@ func (p *proxy) IndexFile(onlyCompatible bool, namespace string) (*repo.IndexFil
 
 			for key, entry := range idxFile.Entries {
 				for i := len(entry) - 1; i >= 0; i-- {
+					if entry[i].Annotations == nil {
+						annotations := make(map[string]string, 0)
+						annotations["repositoryName"] = helmRepo.Name
+						annotations["repositoryNamespace"] = helmRepo.Namespace
+						entry[i].Annotations = annotations
+					} else {
+						entry[i].Annotations["repositoryName"] = helmRepo.Name
+						entry[i].Annotations["repositoryNamespace"] = helmRepo.Namespace
+					}
 					if entry[i].Type == "library" {
 						entry = append(entry[:i], entry[i+1:]...)
 						continue
@@ -98,6 +107,7 @@ func (p *proxy) IndexFile(onlyCompatible bool, namespace string) (*repo.IndexFil
 					if onlyCompatible && entry[i].Metadata.KubeVersion != "" && p.kubeVersion != "" {
 						if !chartutil.IsCompatibleRange(entry[i].Metadata.KubeVersion, p.kubeVersion) {
 							entry = append(entry[:i], entry[i+1:]...)
+							continue
 						}
 					}
 				}

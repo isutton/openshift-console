@@ -152,6 +152,13 @@ func (b helmRepoGetter) unmarshallConfig(repo unstructured.Unstructured) (*helmR
 	if err != nil {
 		return nil, err
 	}
+	tlsRefNamespace, tlsRefNamespaceFound, err := unstructured.NestedString(repo.Object, "spec", "connectionConfig", "tlsClientConfig", "namespace")
+	if err != nil {
+		return nil, err
+	}
+	if !tlsRefNamespaceFound {
+		tlsRefNamespace = configNamespace
+	}
 
 	var rootCAs *x509.CertPool
 	if caReference != "" {
@@ -181,9 +188,9 @@ func (b helmRepoGetter) unmarshallConfig(repo unstructured.Unstructured) (*helmR
 		RootCAs: rootCAs,
 	})
 	if tlsReference != "" {
-		secret, err := b.CoreClient.Secrets(configNamespace).Get(context.TODO(), tlsReference, v1.GetOptions{})
+		secret, err := b.CoreClient.Secrets(tlsRefNamespace).Get(context.TODO(), tlsReference, v1.GetOptions{})
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Failed to GET secret %s reason %v", tlsReference, err))
+			return nil, errors.New(fmt.Sprintf("Failed to GET secret %s from %vreason %v", tlsReference, tlsRefNamespace, err))
 		}
 		tlsCertSecretKey := "tls.crt"
 		tlsCert, ok := secret.Data[tlsCertSecretKey]

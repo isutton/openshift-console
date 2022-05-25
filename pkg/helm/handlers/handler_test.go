@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/yaml"
 
@@ -58,8 +59,8 @@ func fakeHelmHandler() helmHandlers {
 	}
 }
 
-func fakeInstallChart(mockedRelease *release.Release, err error) func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration) (*release.Release, error) {
-	return func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration) (r *release.Release, er error) {
+func fakeInstallChart(mockedRelease *release.Release, err error) func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, user *auth.User, repositoryName string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*release.Release, error) {
+	return func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, user *auth.User, repositoryName string, cliet dynamic.Interface, coreClient corev1client.CoreV1Interface) (r *release.Release, er error) {
 		return mockedRelease, err
 	}
 }
@@ -85,8 +86,8 @@ func fakeGetRelease(name string, t *testing.T, mockedRelease *release.Release, e
 	}
 }
 
-func mockedHelmGetChart(c *chart.Chart, e error) func(url string, conf *action.Configuration) (*chart.Chart, error) {
-	return func(url string, conf *action.Configuration) (*chart.Chart, error) {
+func mockedHelmGetChart(c *chart.Chart, e error) func(url string, conf *action.Configuration, repositoryName string, user *auth.User, repositoryNamespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error) {
+	return func(url string, conf *action.Configuration, repositoryName string, user *auth.User, repositoryNamespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error) {
 		return c, e
 	}
 }
