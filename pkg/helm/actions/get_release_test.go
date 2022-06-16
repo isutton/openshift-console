@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openshift/console/pkg/auth"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -83,7 +82,7 @@ func TestGetRelease(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			_, err := InstallChart("test-namespace", tt.releaseName, tt.chartPath, nil, actionConfig, &auth.User{}, tt.repositoryName, client, coreClient)
+			_, err := InstallChart("test-namespace", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
 			fmt.Println("Error", err)
 			if tt.testName == "valid chart path" {
 				if err != nil {
@@ -228,7 +227,7 @@ func TestGetReleaseWithTlsData(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			_, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, &auth.User{}, tt.repoName, client, coreClient)
+			_, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
 			require.NoError(t, err)
 			//require.Equal(t, tt.releaseName, rel.Name)
 			rel, err := GetRelease(tt.releaseName, actionConfig)

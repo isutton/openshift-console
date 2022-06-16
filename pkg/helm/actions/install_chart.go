@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/openshift/api/helm/v1beta1"
-	"github.com/openshift/console/pkg/auth"
 	"github.com/openshift/console/pkg/helm/metrics"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -35,14 +34,19 @@ var (
 	}
 )
 
-func InstallChart(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, user *auth.User, repositoryName string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*release.Release, error) {
+func InstallChart(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*release.Release, error) {
 	cmd := action.NewInstall(conf)
 	// tlsFiles contain references of files to be removed once the chart
 	// operation depending on those files is finished.
 	tlsFiles := []*os.File{}
 	var tlsConfigNamespace, configMapName, secretName string
+	repositoryName, _, err := getChartNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
+	if err != nil {
+		//serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
+		return nil, err
+	}
 	// Create a Kubernetes core/v1 client.
-	connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, user, client)
+	connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, client)
 	if err != nil {
 		//serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return nil, err
@@ -143,7 +147,6 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	// remove all the tls related files created by this process
 	defer func() {
 		if os.Getenv("HELM_CLEANUP") == "0" {
-			fmt.Println("Length", len(tlsFiles))
 			for _, f := range tlsFiles {
 				fmt.Println(f.Name())
 			}
@@ -156,7 +159,7 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	return release, nil
 }
 
-func getRepoConnectionConfig(repoName, repoNamespace string, user *auth.User, client dynamic.Interface) (*v1beta1.ConnectionConfig, error) {
+func getRepoConnectionConfig(repoName, repoNamespace string, client dynamic.Interface) (*v1beta1.ConnectionConfig, error) {
 	var err error
 	var helmRepoUnstructured *unstructured.Unstructured
 	helmRepoUnstructured, err = client.Resource(helmChartRepositoryNamespaceGVK).Namespace(repoNamespace).Get(context.TODO(), repoName, v1.GetOptions{})

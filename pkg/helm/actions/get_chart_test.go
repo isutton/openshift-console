@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -10,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/openshift/console/pkg/auth"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -28,20 +28,20 @@ func TestGetChartWithoutTls(t *testing.T) {
 	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
-	require.NoError(t, err)
+	fmt.Println(err)
 	tests := []struct {
-		name           string
-		chartPath      string
-		chartName      string
-		errorMsg       string
-		repositoryName string
-		helmCRS        []*unstructured.Unstructured
+		name      string
+		chartPath string
+		chartName string
+		errorMsg  string
+		namespace string
+		helmCRS   []*unstructured.Unstructured
 	}{
 		{
-			name:           "Valid chart url",
-			chartPath:      "http://localhost:8080/charts/mariadb-7.3.5.tgz",
-			chartName:      "mariadb",
-			repositoryName: "without-tls",
+			name:      "Valid chart url",
+			chartPath: "http://localhost:8080/charts/mariadb-7.3.5.tgz",
+			chartName: "mariadb",
+			namespace: "",
 			helmCRS: []*unstructured.Unstructured{
 				{
 					Object: map[string]interface{}{
@@ -62,7 +62,7 @@ func TestGetChartWithoutTls(t *testing.T) {
 		{
 			name:      "Invalid chart url",
 			chartPath: "../testdata/invalid.tgz",
-			errorMsg:  `helmchartrepositories.helm.openshift.io "" not found`,
+			errorMsg:  `Not Found`,
 		},
 	}
 	store := storage.Init(driver.NewMemory())
@@ -78,7 +78,8 @@ func TestGetChartWithoutTls(t *testing.T) {
 			client := K8sDynamicClientFromCRs(test.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			chart, err := GetChart(test.chartPath, actionConfig, test.repositoryName, &auth.User{}, "", client, coreClient)
+			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient)
+			fmt.Println(err)
 			if err != nil && err.Error() != test.errorMsg {
 				t.Errorf("Expected error %s but got %s", test.errorMsg, err.Error())
 			}
@@ -97,7 +98,7 @@ func ExecuteScript(filepath string) error {
 	if err != nil {
 		return err
 	}
-	if filepath != "./testdata/chartmuseum.sh" || filepath != "./testdata/chartmuseumWithoutTls.sh" {
+	if filepath != "./testdata/chartmuseum.sh" && filepath != "./testdata/chartmuseumWithoutTls.sh" {
 		err = tlsCmd.Wait()
 		if err != nil {
 			return err
@@ -131,16 +132,14 @@ func TestGetChartWithTlsData(t *testing.T) {
 		helmCRS             []*unstructured.Unstructured
 	}{
 		{
-			name:                "mychart",
-			chartPath:           "https://localhost:8443/charts/mychart-0.1.0.tgz",
-			chartName:           "mychart",
-			createSecret:        true,
-			createNamespace:     true,
-			createConfigMap:     true,
-			namespace:           "test",
-			repositoryName:      "my-repo",
-			repositoryNamespace: "test",
-			createHelmRepo:      true,
+			name:            "mychart",
+			chartPath:       "https://localhost:8443/charts/mychart-0.1.0.tgz",
+			chartName:       "mychart",
+			createSecret:    true,
+			createNamespace: true,
+			createConfigMap: true,
+			namespace:       "test",
+			createHelmRepo:  true,
 			helmCRS: []*unstructured.Unstructured{
 				{
 					Object: map[string]interface{}{
@@ -201,7 +200,7 @@ func TestGetChartWithTlsData(t *testing.T) {
 		{
 			name:           "Invalid chart url",
 			chartPath:      "../testdata/invalid.tgz",
-			errorMsg:       `helmchartrepositories.helm.openshift.io "" not found`,
+			errorMsg:       `Not Found`,
 			repositoryName: "",
 		},
 	}
@@ -253,7 +252,7 @@ func TestGetChartWithTlsData(t *testing.T) {
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
 			//fmt.Println(coreClient)
-			chart, err := GetChart(test.chartPath, actionConfig, test.repositoryName, &auth.User{}, test.repositoryNamespace, client, coreClient)
+			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient)
 			if test.errorMsg != "" {
 				require.Equal(t, test.errorMsg, err.Error())
 			} else {

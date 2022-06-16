@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openshift/console/pkg/auth"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -33,21 +32,18 @@ func TestInstallChart(t *testing.T) {
 	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
-	require.NoError(t, err)
 	tests := []struct {
-		releaseName    string
-		chartPath      string
-		chartName      string
-		chartVersion   string
-		helmCRS        []*unstructured.Unstructured
-		repositoryName string
+		releaseName  string
+		chartPath    string
+		chartName    string
+		chartVersion string
+		helmCRS      []*unstructured.Unstructured
 	}{
 		{
-			releaseName:    "myrelease",
-			chartPath:      "http://localhost:8080/charts/influxdb-3.0.2.tgz",
-			chartName:      "influxdb",
-			chartVersion:   "3.0.2",
-			repositoryName: "without-tls",
+			releaseName:  "myrelease",
+			chartPath:    "http://localhost:8080/charts/influxdb-3.0.2.tgz",
+			chartName:    "influxdb",
+			chartVersion: "3.0.2",
 			helmCRS: []*unstructured.Unstructured{
 				{
 					Object: map[string]interface{}{
@@ -66,11 +62,10 @@ func TestInstallChart(t *testing.T) {
 			},
 		},
 		{
-			releaseName:    "invalid chart path",
-			chartPath:      "http://localhost:8080/charts/influxdb-3.0.1.tgz",
-			chartName:      "influxdb",
-			chartVersion:   "3.0.1",
-			repositoryName: "without-tls",
+			releaseName:  "invalid chart path",
+			chartPath:    "http://localhost:8080/charts/influxdb-3.0.1.tgz",
+			chartName:    "influxdb",
+			chartVersion: "3.0.1",
 			helmCRS: []*unstructured.Unstructured{
 				{
 					Object: map[string]interface{}{
@@ -102,7 +97,7 @@ func TestInstallChart(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, &auth.User{}, tt.repositoryName, client, coreClient)
+			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
 			if tt.releaseName == "valid chart path" {
 				if err != nil {
 					t.Error("Error occurred while installing chartPath")
@@ -157,7 +152,6 @@ func TestInstallChartWithTlsData(t *testing.T) {
 		createNamespace bool
 		createConfigMap bool
 		namespace       string
-		repoName        string
 		helmCRS         []*unstructured.Unstructured
 	}{
 		{
@@ -169,7 +163,6 @@ func TestInstallChartWithTlsData(t *testing.T) {
 			createNamespace: true,
 			createConfigMap: true,
 			namespace:       "test",
-			repoName:        "my-repo",
 			helmCRS: []*unstructured.Unstructured{
 				{
 					Object: map[string]interface{}{
@@ -243,7 +236,7 @@ func TestInstallChartWithTlsData(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, &auth.User{}, tt.repoName, client, coreClient)
+			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
 			require.NoError(t, err)
 			require.Equal(t, tt.releaseName, rel.Name)
 		})

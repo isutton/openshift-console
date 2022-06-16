@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/openshift/console/pkg/auth"
+	"github.com/openshift/console/pkg/helm/chartproxy"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/client-go/dynamic"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
@@ -43,26 +45,99 @@ func writeTempFile(data []byte, pattern string) (*os.File, error) {
 	return f, nil
 }
 
-func NewCoreClient(conf *action.Configuration) (*corev1client.CoreV1Client, error) {
-	restConfig, err := conf.RESTClientGetter.ToRESTConfig()
-	if err != nil {
-		return nil, err
-	}
-	return corev1client.NewForConfig(restConfig)
-}
-func getChartNameAndNamespaceFromChartUrl(url string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (string, string) {
+func getChartNameAndNamespaceFromChartUrl(url, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (string, string, error) {
 	// create an index.yaml from all repository
 	//iterate all entries and find chart with the right url
 	var repositoryName, repositoryNamespace string
-	var helmRepo []*chartproxy.helmRepo
-
-	return repositoryName, repositoryNamespace
+	// indexFile, err := proxy.IndexFileAll(true)
+	// if err != nil {
+	// 	return "", "", fmt.Errorf("Error In Finding the chart repositories")
+	// }
+	// for _, entry := range indexFile.Entries {
+	// 	for i := len(entry) - 1; i >= 0; i-- {
+	// 		if containsUrl(url, entry[i].URLs) {
+	// 			return entry[i].Annotations["repositoryName"], entry[i].Annotations["repositoryNamespace"], nil
+	// 		}
+	// 	}
+	// }
+	repoGetter := chartproxy.NewRepoGetter(client, coreClient)
+	helmRepo, err := repoGetter.List(namespace)
+	//helmRepo, err := FindAllRepositories(client, coreClient, namespace)
+	if err != nil {
+		return "", "", fmt.Errorf("Error In Finding the chart repositories")
+	}
+	for _, repo := range helmRepo {
+		if strings.HasPrefix(url, repo.URL.String()) {
+			return repo.Name, repo.Namespace, nil
+		}
+		//repositoryName, repositoryNamespace = FindChartWithUrl(url, idx)
+		// if repositoryName != "" || repositoryNamespace != "" {
+		// 	return repositoryName, repositoryNamespace, nil
+		// }
+	}
+	return repositoryName, repositoryNamespace, fmt.Errorf("Not Found")
 }
 
-func GetChart(url string, conf *action.Configuration, repositoryName string, user *auth.User, ns string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error) {
+// func FindAllRepositories(client dynamic.Interface, coreClient corev1client.CoreV1Interface, namespace string) ([]*unstructured.Unstructured, error) {
+// 	var helmRepo []*unstructured.Unstructured
+// 	clusterRepos, err := client.Resource(helmChartRepositoryClusterGVK).Namespace(namespace).List(context.TODO(), v1.ListOptions{})
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	for _, item := range clusterRepos.Items {
+// 		helmConfig, err := b.unmarshallConfig(item)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		helmRepo = append(helmRepo, helmConfig)
+// 	}
+// 	namespaceRepos, err := client.Resource(helmChartRepositoryNamespaceGVK).List(context.TODO(), v1.ListOptions{})
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	for _, item := range namespaceRepos.Items {
+// 		helmConfig, err := b.unmarshallConfig(item)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		helmRepo = append(helmRepo, helmConfig)
+// 	}
+// 	return helmRepo, nil
+// }
+
+// func getIndexFile(repo *unstructured.Unstructured) *repo.IndexFile {
+// 	return nil
+// }
+
+// func FindChartWithUrl(url string, indexFile *repo.IndexFile) (string, string) {
+// 	var repositoryName, repositoryNamespace string
+// 	for _, entry := range indexFile.Entries {
+// 		for i := len(entry) - 1; i >= 0; i-- {
+// 			if containsUrl(url, entry[i].URLs) {
+// 				return entry[i].Annotations["repositoryName"], entry[i].Annotations["repositoryNamespace"]
+// 			}
+// 		}
+// 	}
+// 	return repositoryName, repositoryNamespace
+// }
+
+// func containsUrl(url string, urls []string) bool {
+// 	for _, val := range urls {
+// 		if val == url {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
+
+func GetChart(url string, conf *action.Configuration, ns string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error) {
 	cmd := action.NewInstall(conf)
-	repositoryName, repositoryNamespace := getChartNameAndNamespaceFromChartUrl(url, client, coreClient)
-	connectionConfig, err := getRepoConnectionConfig(repositoryName, repositoryNamespace, user, client)
+	repositoryName, repositoryNamespace, err := getChartNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
+	if err != nil {
+		//serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
+		return nil, err
+	}
+	connectionConfig, err := getRepoConnectionConfig(repositoryName, repositoryNamespace, client)
 	if err != nil {
 		//serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return nil, err

@@ -70,13 +70,13 @@ type helmHandlers struct {
 
 	// helm actions
 	renderManifests   func(string, string, map[string]interface{}, *action.Configuration) (string, error)
-	installChart      func(string, string, string, map[string]interface{}, *action.Configuration, *auth.User, string, dynamic.Interface, corev1client.CoreV1Interface) (*release.Release, error)
+	installChart      func(string, string, string, map[string]interface{}, *action.Configuration, dynamic.Interface, corev1client.CoreV1Interface) (*release.Release, error)
 	listReleases      func(*action.Configuration) ([]*release.Release, error)
 	upgradeRelease    func(string, string, string, map[string]interface{}, *action.Configuration) (*release.Release, error)
 	uninstallRelease  func(string, *action.Configuration) (*release.UninstallReleaseResponse, error)
 	rollbackRelease   func(string, int, *action.Configuration) (*release.Release, error)
 	getRelease        func(string, *action.Configuration) (*release.Release, error)
-	getChart          func(chartUrl string, conf *action.Configuration, repositoryName string, user *auth.User, repositoryNamespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error)
+	getChart          func(chartUrl string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error)
 	getReleaseHistory func(releaseName string, conf *action.Configuration) ([]*release.Release, error)
 	newProxy          func(bearerToken string) (chartproxy.Proxy, error)
 }
@@ -123,8 +123,6 @@ func (h *helmHandlers) HandleHelmInstall(user *auth.User, w http.ResponseWriter,
 		serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return
 	}
-	// TODO: remove these values
-	req.RepositoryName = "my-repo"
 
 	conf := h.getActionConfigurations(h.ApiServerHost, req.Namespace, user.Token, &h.Transport)
 	restConfig, err := conf.RESTClientGetter.ToRESTConfig()
@@ -142,7 +140,7 @@ func (h *helmHandlers) HandleHelmInstall(user *auth.User, w http.ResponseWriter,
 		serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return
 	}
-	resp, err := h.installChart(req.Namespace, req.Name, req.ChartUrl, req.Values, conf, user, req.RepositoryName, client, coreClient)
+	resp, err := h.installChart(req.Namespace, req.Name, req.ChartUrl, req.Values, conf, client, coreClient)
 	if err != nil {
 		serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to install helm chart: %v", err)})
 		return
@@ -193,10 +191,7 @@ func (h *helmHandlers) HandleGetRelease(user *auth.User, w http.ResponseWriter, 
 func (h *helmHandlers) HandleChartGet(user *auth.User, w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	chartUrl := params.Get("url")
-	repositoryName := params.Get("repositoryName")
-	repositoryName = "my-repo"
-	repositoryNamespace := params.Get("repositoryNamespace")
-	repositoryNamespace = "test"
+	namespace := params.Get("namespace")
 	//conf := h.getActionConfigurations(h.ApiServerHost, r, user.Token, &h.Transport)
 	// scope request to default namespace
 	conf := h.getActionConfigurations(h.ApiServerHost, "default", user.Token, &h.Transport)
@@ -215,7 +210,7 @@ func (h *helmHandlers) HandleChartGet(user *auth.User, w http.ResponseWriter, r 
 		serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return
 	}
-	resp, err := h.getChart(chartUrl, conf, repositoryName, user, repositoryNamespace, client, coreClient)
+	resp, err := h.getChart(chartUrl, conf, namespace, client, coreClient)
 	if err != nil {
 		serverutils.SendResponse(w, http.StatusBadRequest, serverutils.ApiError{Err: fmt.Sprintf("Failed to retrieve chart: %v", err)})
 		return
