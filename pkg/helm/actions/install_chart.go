@@ -68,7 +68,6 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 			if err != nil {
 				return nil, errors.New(fmt.Sprintf("Failed to GET configmap %s, reason %v", configMapName, err))
 			}
-			caBundleKey := "ca-bundle.crt"
 			caCertBytes, found := configMap.Data[caBundleKey]
 			if !found {
 				return nil, errors.New(fmt.Sprintf("Failed to find %s key in configmap %s", caBundleKey, configMapName))
@@ -85,23 +84,21 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 			if err != nil {
 				return nil, errors.New(fmt.Sprintf("Failed to GET secret %s from %vreason %v", secretName, tlsConfigNamespace, err))
 			}
-			tlsCertSecretKey := "tls.crt"
-			tlsCertBytes, found := secret.Data[tlsCertSecretKey]
+			tlsCertBytes, found := secret.Data[tlsSecretCertKey]
 			if !found {
-				return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsCertSecretKey, secretName))
+				return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsSecretCertKey, secretName))
 			}
-			tlsCertFile, err := writeTempFile((tlsCertBytes), "tlscrt-*")
+			tlsCertFile, err := writeTempFile((tlsCertBytes), tlsSecretPattern)
 			if err != nil {
 				return nil, err
 			}
 			cmd.ChartPathOptions.CertFile = tlsCertFile.Name()
 			tlsFiles = append(tlsFiles, tlsCertFile)
-			tlsSecretKey := "tls.key"
 			tlsKeyBytes, found := secret.Data[tlsSecretKey]
 			if !found {
 				return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsSecretKey, secretName))
 			}
-			tlsKeyFile, err := writeTempFile(tlsKeyBytes, "tlskey-*")
+			tlsKeyFile, err := writeTempFile(tlsKeyBytes, tlsKeyPattern)
 			if err != nil {
 				return nil, err
 			}

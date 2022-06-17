@@ -16,14 +16,17 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-const (
-	configNamespace = "openshift-config"
-)
-
 // constants
 const (
-	tlsSecretCertKey = "tls.crt"
-	tlsSecretKeyKey  = "tls.key"
+	configNamespace         = "openshift-config"
+	tlsSecretCertKey        = "tls.crt"
+	tlsSecretKey            = "tls.key"
+	caBundleKey             = "ca-bundle.crt"
+	tlsSecretPattern        = "tlscrt-*"
+	tlsKeyPattern           = "tlskey-*"
+	cacertPattern           = "cacert-*"
+	openshiftRepoUrl        = "https://charts.openshift.io"
+	openshiftChartUrlPrefix = "https://github.com/openshift-helm-charts/"
 )
 
 func writeTempFile(data []byte, pattern string) (*os.File, error) {
@@ -68,6 +71,8 @@ func getChartNameAndNamespaceFromChartUrl(url, namespace string, client dynamic.
 	}
 	for _, repo := range helmRepo {
 		if strings.HasPrefix(url, repo.URL.String()) {
+			return repo.Name, repo.Namespace, nil
+		} else if repo.URL.String() == openshiftRepoUrl && strings.HasPrefix(url, openshiftChartUrlPrefix) {
 			return repo.Name, repo.Namespace, nil
 		}
 		//repositoryName, repositoryNamespace = FindChartWithUrl(url, idx)
@@ -162,11 +167,11 @@ func GetChart(url string, conf *action.Configuration, ns string, client dynamic.
 			// tls.key
 			//---------------------------------------------------------------
 
-			tlsKeyBytes, found := tlsSecret.Data[tlsSecretKeyKey]
+			tlsKeyBytes, found := tlsSecret.Data[tlsSecretKey]
 			if !found {
-				return nil, fmt.Errorf("failed to find %s key in secret %s", tlsSecretKeyKey, tlsClientConfig.Name)
+				return nil, fmt.Errorf("failed to find %s key in secret %s", tlsSecretKey, tlsClientConfig.Name)
 			}
-			tlsKeyFile, err := writeTempFile(tlsKeyBytes, "tlskey-*")
+			tlsKeyFile, err := writeTempFile(tlsKeyBytes, tlsKeyPattern)
 			if err != nil {
 				return nil, err
 			}
@@ -181,7 +186,7 @@ func GetChart(url string, conf *action.Configuration, ns string, client dynamic.
 			if !found {
 				return nil, fmt.Errorf("failed to find %s key in secret %s", tlsSecretCertKey, tlsClientConfig.Name)
 			}
-			tlsCertFile, err := writeTempFile((tlsCertBytes), "tlscrt-*")
+			tlsCertFile, err := writeTempFile((tlsCertBytes), tlsSecretPattern)
 			if err != nil {
 				return nil, err
 			}
@@ -195,12 +200,11 @@ func GetChart(url string, conf *action.Configuration, ns string, client dynamic.
 		if caCertGetErr != nil {
 			return nil, fmt.Errorf("failed to GET configmap %s: %w", connectionConfig.CA.Name, caCertGetErr)
 		}
-		caBundleKey := "ca-bundle.crt"
 		caCertBytes, found := caCertConfigMap.Data[caBundleKey]
 		if !found {
 			return nil, fmt.Errorf("failed to find %s key in configmap %s", caBundleKey, connectionConfig.CA.Name)
 		}
-		caCertFile, caCertGetErr := writeTempFile([]byte(caCertBytes), "cacert-*")
+		caCertFile, caCertGetErr := writeTempFile([]byte(caCertBytes), cacertPattern)
 		if caCertGetErr != nil {
 			return nil, caCertGetErr
 		}
@@ -211,8 +215,6 @@ func GetChart(url string, conf *action.Configuration, ns string, client dynamic.
 	//---------------------------------------------------------------
 	// ca-bundle.crt
 	//---------------------------------------------------------------
-	// add repo url
-	//cmd.ChartPathOptions.RepoURL = connectionConfig.URL
 	// remove all the tls related files created by this process
 	defer func() {
 		if os.Getenv("HELM_CLEANUP") == "0" {
