@@ -42,11 +42,12 @@ const (
 )
 
 type helmRepo struct {
-	Name       string
-	Namespace  string
-	URL        *url.URL
-	Disabled   bool
-	httpClient func() (*http.Client, error)
+	Name        string
+	Namespace   string
+	URL         *url.URL
+	Disabled    bool
+	Annotations map[string]string
+	httpClient  func() (*http.Client, error)
 }
 
 func httpClient(tlsConfig *tls.Config) (*http.Client, error) {
@@ -142,6 +143,7 @@ func (b helmRepoGetter) unmarshallConfig(repo unstructured.Unstructured) (*helmR
 	if err != nil {
 		return nil, err
 	}
+	h.Annotations = repo.GetAnnotations()
 
 	caReference, _, err := unstructured.NestedString(repo.Object, "spec", "connectionConfig", "ca", "name")
 	if err != nil {
@@ -164,17 +166,17 @@ func (b helmRepoGetter) unmarshallConfig(repo unstructured.Unstructured) (*helmR
 	if caReference != "" {
 		configMap, err := b.CoreClient.ConfigMaps(configNamespace).Get(context.TODO(), caReference, v1.GetOptions{})
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Failed to GET configmap %s, reason %v", caReference, err))
+			return nil, fmt.Errorf("Failed to GET configmap %s, reason %v", caReference, err)
 		}
 		caBundleKey := "ca-bundle.crt"
 		caCert, found := configMap.Data[caBundleKey]
 		if !found {
-			return nil, errors.New(fmt.Sprintf("Failed to find %s key in configmap %s", caBundleKey, caReference))
+			return nil, fmt.Errorf("Failed to find %s key in configmap %s", caBundleKey, caReference)
 		}
 		if caCert != "" {
 			rootCAs = x509.NewCertPool()
 			if ok := rootCAs.AppendCertsFromPEM([]byte(caCert)); !ok {
-				return nil, errors.New("Failed to append caCert")
+				return nil, fmt.Errorf("Failed to append caCert")
 			}
 		}
 	}
@@ -190,17 +192,17 @@ func (b helmRepoGetter) unmarshallConfig(repo unstructured.Unstructured) (*helmR
 	if tlsReference != "" {
 		secret, err := b.CoreClient.Secrets(tlsRefNamespace).Get(context.TODO(), tlsReference, v1.GetOptions{})
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Failed to GET secret %s from %vreason %v", tlsReference, tlsRefNamespace, err))
+			return nil, fmt.Errorf("Failed to GET secret %s from %vreason %v", tlsReference, tlsRefNamespace, err)
 		}
 		tlsCertSecretKey := "tls.crt"
 		tlsCert, ok := secret.Data[tlsCertSecretKey]
 		if !ok {
-			return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsCertSecretKey, tlsReference))
+			return nil, fmt.Errorf("Failed to find %s key in secret %s", tlsCertSecretKey, tlsReference)
 		}
 		tlsSecretKey := "tls.key"
 		tlsKey, ok := secret.Data[tlsSecretKey]
 		if !ok {
-			return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsSecretKey, tlsReference))
+			return nil, fmt.Errorf("Failed to find %s key in secret %s", tlsSecretKey, tlsReference)
 		}
 		if tlsKey != nil && tlsCert != nil {
 			cert, err := tls.X509KeyPair(tlsCert, tlsKey)

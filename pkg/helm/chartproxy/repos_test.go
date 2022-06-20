@@ -519,30 +519,19 @@ func TestHelmRepoGetter_SkipDisabled(t *testing.T) {
 
 func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 	//create the server.key and server.crt
-	tlsCmd := exec.Command("./testdata/test_tls.sh")
-	tlsCmd.Stdout = os.Stdout
-	err := tlsCmd.Start()
-	if err != nil {
-		require.NoError(t, err)
-	}
-	err = tlsCmd.Wait()
-	if err != nil {
-		require.NoError(t, err)
-	}
+	os.Setenv("HELM_CLEANUP", "0")
+	//create the server.key and server.crt
+	err := ExecuteScript("./testdata/createTlsSecrets.sh")
+	require.NoError(t, err)
 	//start chartmuseum server
-	cmd := exec.Command("./testdata/chartmuseum.sh")
-	cmd.Stdout = os.Stdout
-	err = cmd.Start()
-	if err != nil {
-		require.NoError(t, err)
-	}
-	defer func() {
-		err = cleanup()
-		require.NoError(t, err)
-	}()
+	err = ExecuteScript("./testdata/chartmuseum.sh")
+	require.NoError(t, err)
+	err = ExecuteScript("./testdata/cacertCreate.sh")
+	require.NoError(t, err)
+	err = ExecuteScript("./testdata/uploadCharts.sh")
 	tests := []struct {
 		name            string
-		helmCRS         []*unstructured.Unstructured
+		helmCRS         *unstructured.Unstructured
 		repoName        string
 		wantsErr        bool
 		createSecret    bool
@@ -551,26 +540,25 @@ func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 	}{
 		{
 			name: "Namespace present",
-			helmCRS: []*unstructured.Unstructured{
-				{
-					Object: map[string]interface{}{
-						"apiVersion": "helm.openshift.io/v1beta1",
-						"kind":       "ProjectHelmChartRepository",
-						"metadata": map[string]interface{}{
-							"namespace": "",
-							"name":      "repo4",
-						},
-						"spec": map[string]interface{}{
-							"connectionConfig": map[string]interface{}{
-								"url": "https://localhost:8080",
-								"tlsClientConfig": map[string]interface{}{
-									"name":      "fooSecret",
-									"namespace": "testing",
-								},
+			helmCRS: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "helm.openshift.io/v1beta1",
+					"kind":       "ProjectHelmChartRepository",
+					"metadata": map[string]interface{}{
+						"namespace": "",
+						"name":      "repo4",
+					},
+					"spec": map[string]interface{}{
+						"connectionConfig": map[string]interface{}{
+							"url": "https://localhost:8443",
+							"tlsClientConfig": map[string]interface{}{
+								"name":      "fooSecret",
+								"namespace": "testing",
 							},
 						},
 					},
-				}},
+				},
+			},
 			repoName:        "repo4",
 			wantsErr:        false,
 			createSecret:    true,
@@ -579,25 +567,24 @@ func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 		},
 		{
 			name: "Namespace not present",
-			helmCRS: []*unstructured.Unstructured{
-				{
-					Object: map[string]interface{}{
-						"apiVersion": "helm.openshift.io/v1beta1",
-						"kind":       "ProjectHelmChartRepository",
-						"metadata": map[string]interface{}{
-							"namespace": "",
-							"name":      "repo5",
-						},
-						"spec": map[string]interface{}{
-							"connectionConfig": map[string]interface{}{
-								"url": "https://localhost:8080",
-								"tlsClientConfig": map[string]interface{}{
-									"name": "fooSecret",
-								},
+			helmCRS: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "helm.openshift.io/v1beta1",
+					"kind":       "ProjectHelmChartRepository",
+					"metadata": map[string]interface{}{
+						"namespace": "",
+						"name":      "repo5",
+					},
+					"spec": map[string]interface{}{
+						"connectionConfig": map[string]interface{}{
+							"url": "https://localhost:8443",
+							"tlsClientConfig": map[string]interface{}{
+								"name": "fooSecret",
 							},
 						},
 					},
-				}},
+				},
+			},
 			repoName:        "repo5",
 			wantsErr:        false,
 			createSecret:    true,
@@ -605,26 +592,25 @@ func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 		},
 		{
 			name: "Namespace is invalid",
-			helmCRS: []*unstructured.Unstructured{
-				{
-					Object: map[string]interface{}{
-						"apiVersion": "helm.openshift.io/v1beta1",
-						"kind":       "ProjectHelmChartRepository",
-						"metadata": map[string]interface{}{
-							"namespace": "",
-							"name":      "repo6",
-						},
-						"spec": map[string]interface{}{
-							"connectionConfig": map[string]interface{}{
-								"url": "https://localhost:8080",
-								"tlsClientConfig": map[string]interface{}{
-									"name":      "fooSecret",
-									"namespace": 1,
-								},
+			helmCRS: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "helm.openshift.io/v1beta1",
+					"kind":       "ProjectHelmChartRepository",
+					"metadata": map[string]interface{}{
+						"namespace": "",
+						"name":      "repo6",
+					},
+					"spec": map[string]interface{}{
+						"connectionConfig": map[string]interface{}{
+							"url": "https://localhost:8443",
+							"tlsClientConfig": map[string]interface{}{
+								"name":      "fooSecret",
+								"namespace": 1,
 							},
 						},
 					},
-				}},
+				},
+			},
 			repoName:        "repo6",
 			wantsErr:        true,
 			createSecret:    true,
@@ -659,7 +645,7 @@ func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 				Client:     fake.K8sDynamicClient("helm.openshift.io/v1beta1", "HelmChartRepository", ""),
 				CoreClient: k8sfake.NewSimpleClientset(objs...).CoreV1(),
 			}
-			_, err := repoGetter.unmarshallConfig(*tt.helmCRS[0])
+			_, err := repoGetter.unmarshallConfig(*tt.helmCRS)
 			if tt.wantsErr {
 				require.Error(t, err)
 			} else {
@@ -667,19 +653,22 @@ func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 			}
 		})
 	}
+	err = ExecuteScript("./testdata/cleanup.sh")
+	require.NoError(t, err)
 }
 
-func cleanup() error {
-	//cleanup for rerun
-	cleanupCmd := exec.Command("./testdata/cleanup.sh")
-	cleanupCmd.Stdout = os.Stdout
-	err := cleanupCmd.Start()
+func ExecuteScript(filepath string) error {
+	tlsCmd := exec.Command(filepath)
+	tlsCmd.Stdout = os.Stdout
+	err := tlsCmd.Start()
 	if err != nil {
 		return err
 	}
-	err = cleanupCmd.Wait()
-	if err != nil {
-		return err
+	if filepath != "./testdata/chartmuseum.sh" {
+		err = tlsCmd.Wait()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

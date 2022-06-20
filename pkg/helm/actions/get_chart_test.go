@@ -78,7 +78,7 @@ func TestGetChartWithoutTls(t *testing.T) {
 			client := K8sDynamicClientFromCRs(test.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient)
+			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, true)
 			fmt.Println(err)
 			if err != nil && err.Error() != test.errorMsg {
 				t.Errorf("Expected error %s but got %s", test.errorMsg, err.Error())
@@ -107,7 +107,7 @@ func ExecuteScript(filepath string) error {
 	return nil
 }
 func TestGetChartWithTlsData(t *testing.T) {
-	os.Setenv("HELM_CLEANUP", "0")
+	// os.Setenv("HELM_REPOSITORY_CACHE", helmpath.CachePath("tmp/repository"))
 	//create the server.key and server.crt
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
 	require.NoError(t, err)
@@ -115,6 +115,7 @@ func TestGetChartWithTlsData(t *testing.T) {
 	err = ExecuteScript("./testdata/chartmuseum.sh")
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/cacertCreate.sh")
+	fmt.Println(err)
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/uploadCharts.sh")
 	tests := []struct {
@@ -200,11 +201,13 @@ func TestGetChartWithTlsData(t *testing.T) {
 		{
 			name:           "Invalid chart url",
 			chartPath:      "../testdata/invalid.tgz",
-			errorMsg:       `Not Found`,
+			errorMsg:       `Prefix Not Found`,
 			repositoryName: "",
 		},
 	}
-
+	settings.RepositoryCache = ""
+	settings.RegistryConfig = ""
+	settings.RepositoryConfig = ""
 	store := storage.Init(driver.NewMemory())
 	actionConfig := &action.Configuration{
 		RESTClientGetter: FakeConfig{},
@@ -251,8 +254,8 @@ func TestGetChartWithTlsData(t *testing.T) {
 			client := K8sDynamicClientFromCRs(test.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			//fmt.Println(coreClient)
-			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient)
+			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, false)
+			fmt.Println(err)
 			if test.errorMsg != "" {
 				require.Equal(t, test.errorMsg, err.Error())
 			} else {

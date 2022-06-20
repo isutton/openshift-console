@@ -1,4 +1,6 @@
 #!/bin/bash
+rm -rf ./chartstorage
+rm -rf ./mychart
 rm -rf ./ca.crt
 rm -rf ./ca.key
 rm -rf ./ca.srl

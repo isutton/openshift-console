@@ -59,8 +59,8 @@ func fakeHelmHandler() helmHandlers {
 	}
 }
 
-func fakeInstallChart(mockedRelease *release.Release, err error) func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*release.Release, error) {
-	return func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, cliet dynamic.Interface, coreClient corev1client.CoreV1Interface) (r *release.Release, er error) {
+func fakeInstallChart(mockedRelease *release.Release, err error) func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanup bool) (*release.Release, error) {
+	return func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, cliet dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanup bool) (r *release.Release, er error) {
 		return mockedRelease, err
 	}
 }
@@ -86,8 +86,8 @@ func fakeGetRelease(name string, t *testing.T, mockedRelease *release.Release, e
 	}
 }
 
-func mockedHelmGetChart(c *chart.Chart, e error) func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error) {
-	return func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*chart.Chart, error) {
+func mockedHelmGetChart(c *chart.Chart, e error) func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool) (*chart.Chart, error) {
+	return func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool) (*chart.Chart, error) {
 		return c, e
 	}
 }

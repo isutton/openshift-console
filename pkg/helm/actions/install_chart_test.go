@@ -2,7 +2,6 @@ package actions
 
 import (
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -97,7 +96,7 @@ func TestInstallChart(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
+			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, true)
 			if tt.releaseName == "valid chart path" {
 				if err != nil {
 					t.Error("Error occurred while installing chartPath")
@@ -132,7 +131,6 @@ func TestInstallChart(t *testing.T) {
 }
 
 func TestInstallChartWithTlsData(t *testing.T) {
-	os.Setenv("HELM_CLEANUP", "0")
 	//create the server.key and server.crt
 	//create the server.key and server.crt
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
@@ -231,12 +229,10 @@ func TestInstallChartWithTlsData(t *testing.T) {
 				secretSpec := &v1.ConfigMap{Data: data, ObjectMeta: metav1.ObjectMeta{Name: "my-repo", Namespace: configNamespace}}
 				objs = append(objs, secretSpec)
 			}
-			//client := fake.K8sDynamicClient("helm.openshift.io/v1beta1", "HelmChartRepository", "")
-			//coreClient := k8sfake.NewSimpleClientset(objs...).CoreV1()
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
+			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, false)
 			require.NoError(t, err)
 			require.Equal(t, tt.releaseName, rel.Name)
 		})

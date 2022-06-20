@@ -2,7 +2,6 @@ package actions
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -34,85 +33,85 @@ var (
 	}
 )
 
-func InstallChart(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (*release.Release, error) {
+func setUpAuthentication(cmd *action.Install, connectionConfig *v1beta1.ConnectionConfig, coreClient corev1client.CoreV1Interface) ([]*os.File, error) {
+	tlsFiles := []*os.File{}
+	var tlsConfigNamespace, configMapName, secretName string
+	//set up tls cert and key
+	if connectionConfig.TLSClientConfig != nil {
+		secretName = connectionConfig.TLSClientConfig.Name
+		tlsConfigNamespace = connectionConfig.TLSClientConfig.Namespace
+		if tlsConfigNamespace == "" {
+			tlsConfigNamespace = configNamespace
+		}
+		secret, err := coreClient.Secrets(tlsConfigNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("Failed to GET secret %s from %vreason %v", secretName, tlsConfigNamespace, err)
+		}
+		tlsCertBytes, found := secret.Data[tlsSecretCertKey]
+		if !found {
+			return nil, fmt.Errorf("Failed to find %s key in secret %s", tlsSecretCertKey, secretName)
+		}
+		tlsCertFile, err := writeTempFile((tlsCertBytes), tlsSecretPattern)
+		if err != nil {
+			return nil, err
+		}
+		cmd.ChartPathOptions.CertFile = tlsCertFile.Name()
+		tlsFiles = append(tlsFiles, tlsCertFile)
+		tlsKeyBytes, found := secret.Data[tlsSecretKey]
+		if !found {
+			return nil, fmt.Errorf("Failed to find %s key in secret %s", tlsSecretKey, secretName)
+		}
+		tlsKeyFile, err := writeTempFile(tlsKeyBytes, tlsKeyPattern)
+		if err != nil {
+			return nil, err
+		}
+		cmd.ChartPathOptions.KeyFile = tlsKeyFile.Name()
+		tlsFiles = append(tlsFiles, tlsKeyFile)
+	}
+	//set up ca certificate
+	if connectionConfig.CA != nil {
+		configMapName = connectionConfig.CA.Name
+		configMap, err := coreClient.ConfigMaps(configNamespace).Get(context.TODO(), configMapName, v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("Failed to GET configmap %s, reason %v", configMapName, err)
+		}
+		caCertBytes, found := configMap.Data[caBundleKey]
+		if !found {
+			return nil, fmt.Errorf("Failed to find %s key in configmap %s", caBundleKey, configMapName)
+		}
+		caCertFile, caCertGetErr := writeTempFile([]byte(caCertBytes), "cacert-*")
+		if caCertGetErr != nil {
+			return nil, caCertGetErr
+		}
+		cmd.ChartPathOptions.CaFile = caCertFile.Name()
+		tlsFiles = append(tlsFiles, caCertFile)
+	}
+	return tlsFiles, nil
+}
+
+func InstallChart(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanUp bool) (*release.Release, error) {
 	cmd := action.NewInstall(conf)
 	// tlsFiles contain references of files to be removed once the chart
 	// operation depending on those files is finished.
 	tlsFiles := []*os.File{}
-	var tlsConfigNamespace, configMapName, secretName string
-	repositoryName, _, err := getChartNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
+	repositoryName, _, err := getRepositoryNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
 	if err != nil {
-		//serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return nil, err
 	}
-	// Create a Kubernetes core/v1 client.
+
 	connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, client)
 	if err != nil {
-		//serverutils.SendResponse(w, http.StatusBadGateway, serverutils.ApiError{Err: fmt.Sprintf("Failed to parse request: %v", err)})
 		return nil, err
 	}
-	if connectionConfig != (&v1beta1.ConnectionConfig{}) {
-		if connectionConfig.TLSClientConfig != nil {
-			secretName = connectionConfig.TLSClientConfig.Name
-			tlsConfigNamespace = connectionConfig.TLSClientConfig.Namespace
-			if tlsConfigNamespace == "" {
-				tlsConfigNamespace = configNamespace
-			}
-		}
-		if connectionConfig.CA != nil {
-			configMapName = connectionConfig.CA.Name
-		}
-
-		if configMapName != "" {
-			configMap, err := coreClient.ConfigMaps(configNamespace).Get(context.TODO(), configMapName, v1.GetOptions{})
-			if err != nil {
-				return nil, errors.New(fmt.Sprintf("Failed to GET configmap %s, reason %v", configMapName, err))
-			}
-			caCertBytes, found := configMap.Data[caBundleKey]
-			if !found {
-				return nil, errors.New(fmt.Sprintf("Failed to find %s key in configmap %s", caBundleKey, configMapName))
-			}
-			caCertFile, caCertGetErr := writeTempFile([]byte(caCertBytes), "cacert-*")
-			if caCertGetErr != nil {
-				return nil, caCertGetErr
-			}
-			cmd.ChartPathOptions.CaFile = caCertFile.Name()
-			tlsFiles = append(tlsFiles, caCertFile)
-		}
-		if secretName != "" {
-			secret, err := coreClient.Secrets(tlsConfigNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
-			if err != nil {
-				return nil, errors.New(fmt.Sprintf("Failed to GET secret %s from %vreason %v", secretName, tlsConfigNamespace, err))
-			}
-			tlsCertBytes, found := secret.Data[tlsSecretCertKey]
-			if !found {
-				return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsSecretCertKey, secretName))
-			}
-			tlsCertFile, err := writeTempFile((tlsCertBytes), tlsSecretPattern)
-			if err != nil {
-				return nil, err
-			}
-			cmd.ChartPathOptions.CertFile = tlsCertFile.Name()
-			tlsFiles = append(tlsFiles, tlsCertFile)
-			tlsKeyBytes, found := secret.Data[tlsSecretKey]
-			if !found {
-				return nil, errors.New(fmt.Sprintf("Failed to find %s key in secret %s", tlsSecretKey, secretName))
-			}
-			tlsKeyFile, err := writeTempFile(tlsKeyBytes, tlsKeyPattern)
-			if err != nil {
-				return nil, err
-			}
-			cmd.ChartPathOptions.KeyFile = tlsKeyFile.Name()
-			tlsFiles = append(tlsFiles, tlsKeyFile)
-		}
+	tlsFiles, err = setUpAuthentication(cmd, connectionConfig, coreClient)
+	if err != nil {
+		return nil, err
 	}
 	releaseName, chartName, err := cmd.NameAndChart([]string{name, url})
 	if err != nil {
 		return nil, err
 	}
 	cmd.ReleaseName = releaseName
-	// add repo url
-	//cmd.ChartPathOptions.RepoURL = connectionConfig.URL
 	cp, err := cmd.ChartPathOptions.LocateChart(chartName, settings)
 	if err != nil {
 		return nil, err
@@ -143,7 +142,7 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	}
 	// remove all the tls related files created by this process
 	defer func() {
-		if os.Getenv("HELM_CLEANUP") == "0" {
+		if fileCleanUp == false {
 			for _, f := range tlsFiles {
 				fmt.Println(f.Name())
 			}
@@ -160,15 +159,21 @@ func getRepoConnectionConfig(repoName, repoNamespace string, client dynamic.Inte
 	var err error
 	var helmRepoUnstructured *unstructured.Unstructured
 	helmRepoUnstructured, err = client.Resource(helmChartRepositoryNamespaceGVK).Namespace(repoNamespace).Get(context.TODO(), repoName, v1.GetOptions{})
-	if err != nil {
+	if err == nil {
+		var helmRepo v1beta1.ProjectHelmChartRepository
+		err = runtime.DefaultUnstructuredConverter.
+			FromUnstructured(helmRepoUnstructured.Object, &helmRepo)
+		return &helmRepo.Spec.ConnectionConfig, nil
+	} else {
 		helmRepoUnstructured, err = client.Resource(helmChartRepositoryClusterGVK).Get(context.TODO(), repoName, v1.GetOptions{})
 		if err != nil {
 			klog.Errorf("Error listing namespace helm chart repositories: %v \nempty repository list will be used", err)
 			return nil, err
+		} else {
+			var helmRepo v1beta1.HelmChartRepository
+			err = runtime.DefaultUnstructuredConverter.
+				FromUnstructured(helmRepoUnstructured.Object, &helmRepo)
+			return &helmRepo.Spec.ConnectionConfig, nil
 		}
 	}
-	var helmRepo v1beta1.ProjectHelmChartRepository
-	err = runtime.DefaultUnstructuredConverter.
-		FromUnstructured(helmRepoUnstructured.Object, &helmRepo)
-	return &helmRepo.Spec.ConnectionConfig, nil
 }

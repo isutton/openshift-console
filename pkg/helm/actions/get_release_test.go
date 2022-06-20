@@ -82,7 +82,7 @@ func TestGetRelease(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			_, err := InstallChart("test-namespace", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
+			_, err := InstallChart("test-namespace", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, true)
 			fmt.Println("Error", err)
 			if tt.testName == "valid chart path" {
 				if err != nil {
@@ -222,14 +222,11 @@ func TestGetReleaseWithTlsData(t *testing.T) {
 				secretSpec := &v1.ConfigMap{Data: data, ObjectMeta: metav1.ObjectMeta{Name: "my-repo", Namespace: configNamespace}}
 				objs = append(objs, secretSpec)
 			}
-			//client := fake.K8sDynamicClient("helm.openshift.io/v1beta1", "HelmChartRepository", "")
-			//coreClient := k8sfake.NewSimpleClientset(objs...).CoreV1()
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			_, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient)
+			_, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, false)
 			require.NoError(t, err)
-			//require.Equal(t, tt.releaseName, rel.Name)
 			rel, err := GetRelease(tt.releaseName, actionConfig)
 			require.NoError(t, err)
 			require.Equal(t, tt.releaseName, rel.Name)
