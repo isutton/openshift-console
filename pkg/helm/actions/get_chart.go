@@ -100,7 +100,7 @@ func GetChart(url string, conf *action.Configuration, repositoryNamespace string
 		}
 	}
 
-	connectionConfig, err := getRepoConnectionConfig(repositoryName, repositoryNamespace, client)
+	connectionConfig, err := getRepositoryConnectionConfig(repositoryName, repositoryNamespace, client)
 	if err != nil {
 		return nil, err
 	}

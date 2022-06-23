@@ -12,7 +12,6 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/release"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -104,7 +103,7 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 		}
 	}
 
-	connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, client)
+	connectionConfig, err := getRepositoryConnectionConfig(repositoryName, ns, client)
 	if err != nil {
 		return nil, err
 	}
@@ -162,25 +161,36 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	return release, nil
 }
 
-func getRepoConnectionConfig(repoName, repoNamespace string, client dynamic.Interface) (*v1beta1.ConnectionConfig, error) {
-	var err error
-	var helmRepoUnstructured *unstructured.Unstructured
-	helmRepoUnstructured, err = client.Resource(helmChartRepositoryNamespaceGVK).Namespace(repoNamespace).Get(context.TODO(), repoName, v1.GetOptions{})
-	if err == nil {
-		var helmRepo v1beta1.ProjectHelmChartRepository
-		err = runtime.DefaultUnstructuredConverter.
-			FromUnstructured(helmRepoUnstructured.Object, &helmRepo)
-		return &helmRepo.Spec.ConnectionConfig, nil
-	} else {
-		helmRepoUnstructured, err = client.Resource(helmChartRepositoryClusterGVK).Get(context.TODO(), repoName, v1.GetOptions{})
+// getRepositoryConnectionConfig returns the connection configuration for the
+// repository with given `name` and `namespace`.
+func getRepositoryConnectionConfig(
+	name string,
+	namespace string,
+	client dynamic.Interface,
+) (*v1beta1.ConnectionConfig, error) {
+	// attempt to get a project scoped Helm Chart repository
+	unstructuredRepository, getProjectRepositoryErr := client.Resource(helmChartRepositoryNamespaceGVK).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
+	if getProjectRepositoryErr == nil {
+		var repository v1beta1.ProjectHelmChartRepository
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredRepository.Object, &repository)
 		if err != nil {
-			klog.Errorf("Error listing namespace helm chart repositories: %v \nempty repository list will be used", err)
 			return nil, err
-		} else {
-			var helmRepo v1beta1.HelmChartRepository
-			err = runtime.DefaultUnstructuredConverter.
-				FromUnstructured(helmRepoUnstructured.Object, &helmRepo)
-			return &helmRepo.Spec.ConnectionConfig, nil
 		}
+		return &repository.Spec.ConnectionConfig, nil
 	}
+
+	// attempt to get a cluster scoped Helm Chart repository
+	unstructuredRepository, getClusterRepositoryErr := client.Resource(helmChartRepositoryClusterGVK).Get(context.TODO(), name, v1.GetOptions{})
+	if getClusterRepositoryErr == nil {
+		var repository v1beta1.HelmChartRepository
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredRepository.Object, &repository)
+		if err != nil {
+			return nil, err
+		}
+		return &repository.Spec.ConnectionConfig, nil
+	}
+
+	// neither project or cluster scoped Helm Chart repositories have been found.
+	klog.Errorf("Error listing namespace helm chart repositories: %v \nempty repository list will be used", getClusterRepositoryErr)
+	return nil, getClusterRepositoryErr
 }

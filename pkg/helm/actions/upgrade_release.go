@@ -110,7 +110,7 @@ func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *act
 			}
 		}
 
-		connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, dynamicClient)
+		connectionConfig, err := getRepositoryConnectionConfig(repositoryName, ns, dynamicClient)
 		if err != nil {
 			return nil, err
 		}
