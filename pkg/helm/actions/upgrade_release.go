@@ -81,6 +81,7 @@ func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *act
 	fmt.Println("UrL", url)
 	fmt.Println("-----------------------------")
 	var ch *chart.Chart
+	var chartInfo *ChartInfo
 
 	rel, err := GetRelease(name, conf)
 	if err != nil {
@@ -104,7 +105,7 @@ func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *act
 		ch = rel.Chart
 	} else {
 		if repositoryName == "" || ns == "" {
-			repositoryName, _, err = getRepositoryNameAndNamespaceFromChartUrl(url, ns, dynamicClient, coreClient)
+			chartInfo, err = getChartInfoFromChartUrl(url, ns, dynamicClient, coreClient)
 			if err != nil {
 				return nil, err
 			}
@@ -119,8 +120,7 @@ func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *act
 			return nil, err
 		}
 		client.ChartPathOptions.RepoURL = connectionConfig.URL
-		chartName := getChartNameFromUrl(url)
-		cp, err := client.ChartPathOptions.LocateChart(chartName, settings)
+		cp, err := client.ChartPathOptions.LocateChart(chartInfo.Name, settings)
 		if err != nil {
 			return nil, err
 		}

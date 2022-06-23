@@ -92,12 +92,13 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	fmt.Println("Name", name)
 	fmt.Println("Url", url)
 	var err error
+	var chartInfo *ChartInfo
 	cmd := action.NewInstall(conf)
 	// tlsFiles contain references of files to be removed once the chart
 	// operation depending on those files is finished.
 	tlsFiles := []*os.File{}
 	if repositoryName == "" {
-		repositoryName, _, err = getRepositoryNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
+		chartInfo, err = getChartInfoFromChartUrl(url, ns, client, coreClient)
 		if err != nil {
 			return nil, err
 		}
@@ -112,16 +113,8 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 		return nil, err
 	}
 	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
-	chartName := getChartNameFromUrl(url)
-	releaseName, chartName, err := cmd.NameAndChart([]string{name, chartName})
-	fmt.Println("Error", err)
-	fmt.Println("-----------")
-	fmt.Println("Chartname", chartName)
-	if err != nil {
-		return nil, err
-	}
-	cmd.ReleaseName = releaseName
-	cp, err := cmd.ChartPathOptions.LocateChart(chartName, settings)
+	cmd.ReleaseName = name
+	cp, err := cmd.ChartPathOptions.LocateChart(chartInfo.Name, settings)
 	if err != nil {
 		return nil, err
 	}

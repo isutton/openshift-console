@@ -50,39 +50,51 @@ func writeTempFile(data []byte, pattern string) (*os.File, error) {
 	return f, nil
 }
 
-// getRepositoryNameAndNamespaceFromChartUrl returns the name and namespace of
-// the repository containing the given `url`.
+type ChartInfo struct {
+	Name                string
+	Version             string
+	RepositoryName      string
+	RepositoryNamespace string
+}
+
+// getChartInfoFromChartUrl returns information for the chart contained in
+// the given `url`.
 //
 // This function works by listing all available Helm Chart repositories (either
 // scoped by the given `namespace` or cluster scoped), then comparing URLs of
 // all existing charts in the repository manifest to match the given `chartUrl`.
-func getRepositoryNameAndNamespaceFromChartUrl(
+func getChartInfoFromChartUrl(
 	chartUrl string,
 	namespace string,
 	client dynamic.Interface,
 	coreClient corev1client.CoreV1Interface,
-) (string, string, error) {
+) (*ChartInfo, error) {
 	repositories, err := chartproxy.NewRepoGetter(client, coreClient).List(namespace)
 	if err != nil {
-		return "", "", fmt.Errorf("error listing repositories: %w", err)
+		return nil, fmt.Errorf("error listing repositories: %w", err)
 	}
 
 	for _, repository := range repositories {
 		idx, err := repository.IndexFile()
 		if err != nil {
-			return "", "", fmt.Errorf("error producing the index file of repository %q in namespace %q", repository.Name, repository.Namespace)
+			return nil, fmt.Errorf("error producing the index file of repository %q in namespace %q", repository.Name, repository.Namespace)
 		}
 		for _, chartVersions := range idx.Entries {
 			for _, chartVersion := range chartVersions {
 				for _, url := range chartVersion.URLs {
 					if chartUrl == url {
-						return repository.Name, repository.Namespace, nil
+						return &ChartInfo{
+							RepositoryName:      repository.Name,
+							RepositoryNamespace: repository.Namespace,
+							Name:                chartVersion.Name,
+							Version:             chartVersion.Version,
+						}, nil
 					}
 				}
 			}
 		}
 	}
-	return "", "", fmt.Errorf("could not find a repository for the chart url %q in namespace %q", chartUrl, namespace)
+	return nil, fmt.Errorf("could not find a repository for the chart url %q in namespace %q", chartUrl, namespace)
 }
 func FindStartOfIndex(chartNameWithTarRef string) int {
 	for i := 1; i < len(chartNameWithTarRef); i++ {
@@ -103,25 +115,24 @@ func getChartNameFromUrl(url string) string {
 }
 func GetChart(url string, conf *action.Configuration, repositoryNamespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool, repositoryName string) (*chart.Chart, error) {
 	var err error
+	var chartInfo *ChartInfo
+
 	cmd := action.NewInstall(conf)
 	if repositoryName == "" || repositoryNamespace == "" {
-		repositoryName, repositoryNamespace, err = getRepositoryNameAndNamespaceFromChartUrl(url, repositoryNamespace, client, coreClient)
+		chartInfo, err = getChartInfoFromChartUrl(url, repositoryNamespace, client, coreClient)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	connectionConfig, err := getRepositoryConnectionConfig(repositoryName, repositoryNamespace, client)
+	connectionConfig, err := getRepositoryConnectionConfig(chartInfo.RepositoryName, chartInfo.RepositoryNamespace, client)
 	if err != nil {
 		return nil, err
 	}
-	// tlsFiles contain references of files to be removed once the chart
-	// operation depending on those files is finished.
+
 	tlsFiles, err := setUpAuthentication(cmd, connectionConfig, coreClient)
 	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
-	// downloads and caches the chart from the given url
-	chartName := getChartNameFromUrl(url)
-	chartLocation, locateChartErr := cmd.ChartPathOptions.LocateChart(chartName, settings)
+	chartLocation, locateChartErr := cmd.ChartPathOptions.LocateChart(chartInfo.Name, settings)
 	fmt.Println("Locate Error", locateChartErr)
 	if locateChartErr != nil {
 		return nil, locateChartErr
