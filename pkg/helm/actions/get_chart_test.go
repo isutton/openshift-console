@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/cli"
 	kubefake "helm.sh/helm/v3/pkg/kube/fake"
 	"helm.sh/helm/v3/pkg/storage"
 	"helm.sh/helm/v3/pkg/storage/driver"
@@ -24,7 +25,13 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
 
+func setSettings(settings *cli.EnvSettings) {
+	settings.RepositoryCache = "temporary"
+	settings.RegistryConfig = "temporaryRegistryConfig"
+	settings.RepositoryConfig = "/temporaryRepositoryConfig"
+}
 func TestGetChartWithoutTls(t *testing.T) {
+	setSettings(settings)
 	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
@@ -62,7 +69,7 @@ func TestGetChartWithoutTls(t *testing.T) {
 		{
 			name:      "Invalid chart url",
 			chartPath: "../testdata/invalid.tgz",
-			errorMsg:  `Not Found`,
+			errorMsg:  `Chart Not Found`,
 		},
 	}
 	store := storage.Init(driver.NewMemory())
@@ -78,7 +85,7 @@ func TestGetChartWithoutTls(t *testing.T) {
 			client := K8sDynamicClientFromCRs(test.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, true)
+			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, true, "")
 			fmt.Println(err)
 			if err != nil && err.Error() != test.errorMsg {
 				t.Errorf("Expected error %s but got %s", test.errorMsg, err.Error())
@@ -107,6 +114,7 @@ func ExecuteScript(filepath string) error {
 	return nil
 }
 func TestGetChartWithTlsData(t *testing.T) {
+	setSettings(settings)
 	// os.Setenv("HELM_REPOSITORY_CACHE", helmpath.CachePath("tmp/repository"))
 	//create the server.key and server.crt
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
@@ -201,13 +209,10 @@ func TestGetChartWithTlsData(t *testing.T) {
 		{
 			name:           "Invalid chart url",
 			chartPath:      "../testdata/invalid.tgz",
-			errorMsg:       `Prefix Not Found`,
+			errorMsg:       `Chart Not Found`,
 			repositoryName: "",
 		},
 	}
-	settings.RepositoryCache = ""
-	settings.RegistryConfig = ""
-	settings.RepositoryConfig = ""
 	store := storage.Init(driver.NewMemory())
 	actionConfig := &action.Configuration{
 		RESTClientGetter: FakeConfig{},
@@ -254,8 +259,7 @@ func TestGetChartWithTlsData(t *testing.T) {
 			client := K8sDynamicClientFromCRs(test.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, false)
-			fmt.Println(err)
+			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, false, "")
 			if test.errorMsg != "" {
 				require.Equal(t, test.errorMsg, err.Error())
 			} else {

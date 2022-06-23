@@ -3,7 +3,6 @@ package actions
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,6 +20,7 @@ import (
 )
 
 func TestGetRelease(t *testing.T) {
+	setSettings(settings)
 	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
@@ -82,7 +82,7 @@ func TestGetRelease(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			_, err := InstallChart("test-namespace", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, true)
+			_, err := InstallChart("test-namespace", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, true, "")
 			fmt.Println("Error", err)
 			if tt.testName == "valid chart path" {
 				if err != nil {
@@ -121,7 +121,7 @@ func TestGetRelease(t *testing.T) {
 }
 
 func TestGetReleaseWithTlsData(t *testing.T) {
-	os.Setenv("HELM_CLEANUP", "0")
+	setSettings(settings)
 	//create the server.key and server.crt
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
 	require.NoError(t, err)
@@ -225,7 +225,7 @@ func TestGetReleaseWithTlsData(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			_, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, false)
+			_, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, false, "")
 			require.NoError(t, err)
 			rel, err := GetRelease(tt.releaseName, actionConfig)
 			require.NoError(t, err)

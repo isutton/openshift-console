@@ -59,8 +59,8 @@ func fakeHelmHandler() helmHandlers {
 	}
 }
 
-func fakeInstallChart(mockedRelease *release.Release, err error) func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanup bool) (*release.Release, error) {
-	return func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, cliet dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanup bool) (r *release.Release, er error) {
+func fakeInstallChart(mockedRelease *release.Release, err error) func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanup bool, repositoryName string) (*release.Release, error) {
+	return func(ns string, name string, url string, values map[string]interface{}, conf *action.Configuration, cliet dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanup bool, repositoryName string) (r *release.Release, er error) {
 		return mockedRelease, err
 	}
 }
@@ -86,8 +86,8 @@ func fakeGetRelease(name string, t *testing.T, mockedRelease *release.Release, e
 	}
 }
 
-func mockedHelmGetChart(c *chart.Chart, e error) func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool) (*chart.Chart, error) {
-	return func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool) (*chart.Chart, error) {
+func mockedHelmGetChart(c *chart.Chart, e error) func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool, repositoryName string) (*chart.Chart, error) {
+	return func(url string, conf *action.Configuration, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool, repositoryName string) (*chart.Chart, error) {
 		return c, e
 	}
 }
@@ -110,8 +110,8 @@ func fakeUninstallRelease(name string, t *testing.T, fakeResp *release.Uninstall
 	}
 }
 
-func fakeUpgradeRelease(name, ns string, t *testing.T, fakeRelease *release.Release, err error) func(ns, name, url string, vals map[string]interface{}, conf *action.Configuration) (*release.Release, error) {
-	return func(namespace, n, url string, vals map[string]interface{}, conf *action.Configuration) (*release.Release, error) {
+func fakeUpgradeRelease(name, ns string, t *testing.T, fakeRelease *release.Release, err error) func(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanUp bool, repositoryName string) (*release.Release, error) {
+	return func(namespace, n, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanUp bool, repositoryName string) (*release.Release, error) {
 		if namespace != ns {
 			t.Errorf("Namespace mismatch expected %s received %s", ns, namespace)
 		}

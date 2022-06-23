@@ -89,14 +89,19 @@ func setUpAuthentication(cmd *action.Install, connectionConfig *v1beta1.Connecti
 	return tlsFiles, nil
 }
 
-func InstallChart(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanUp bool) (*release.Release, error) {
+func InstallChart(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, client dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanUp bool, repositoryName string) (*release.Release, error) {
+	fmt.Println("Name", name)
+	fmt.Println("Url", url)
+	var err error
 	cmd := action.NewInstall(conf)
 	// tlsFiles contain references of files to be removed once the chart
 	// operation depending on those files is finished.
 	tlsFiles := []*os.File{}
-	repositoryName, _, err := getRepositoryNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
-	if err != nil {
-		return nil, err
+	if repositoryName == "" {
+		repositoryName, _, err = getRepositoryNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, client)
@@ -107,7 +112,12 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	if err != nil {
 		return nil, err
 	}
-	releaseName, chartName, err := cmd.NameAndChart([]string{name, url})
+	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
+	chartName := getChartNameFromUrl(url)
+	releaseName, chartName, err := cmd.NameAndChart([]string{name, chartName})
+	fmt.Println("Error", err)
+	fmt.Println("-----------")
+	fmt.Println("Chartname", chartName)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +153,6 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	// remove all the tls related files created by this process
 	defer func() {
 		if fileCleanUp == false {
-			for _, f := range tlsFiles {
-				fmt.Println(f.Name())
-			}
 			return
 		}
 		for _, f := range tlsFiles {

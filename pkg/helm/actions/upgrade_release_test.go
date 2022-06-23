@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -14,29 +15,52 @@ import (
 	"helm.sh/helm/v3/pkg/storage"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	"helm.sh/helm/v3/pkg/time"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
 
 func TestUpgradeReleaseWithoutDependencies(t *testing.T) {
+	setSettings(settings)
+	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
+	require.NoError(t, err)
+	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
 	tests := []struct {
 		testName     string
 		chartPath    string
 		chartName    string
 		chartVersion string
 		err          error
+		helmCRS      []*unstructured.Unstructured
 	}{
 		{
 			testName:     "upgrade valid release should return successful response",
-			chartPath:    "../testdata/influxdb-3.0.2.tgz",
+			chartPath:    "http://localhost:8080/charts/influxdb-3.0.2.tgz",
 			chartName:    "influxdb",
 			chartVersion: "3.0.2",
 			err:          nil,
+			helmCRS: []*unstructured.Unstructured{
+				{
+					Object: map[string]interface{}{
+						"apiVersion": "helm.openshift.io/v1beta1",
+						"kind":       "HelmChartRepository",
+						"metadata": map[string]interface{}{
+							"name": "without-tls",
+						},
+						"spec": map[string]interface{}{
+							"connectionConfig": map[string]interface{}{
+								"url": "http://localhost:8080",
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			testName:     "upgrade invalid chart upgrade should fail",
 			chartPath:    "../testdata/influxdb-3.0.1.tgz",
 			chartName:    "influxdb",
 			chartVersion: "3.0.2",
-			err:          errors.New(`path "../testdata/influxdb-3.0.1.tgz" not found`),
+			err:          errors.New(`Chart Not Found`),
 		},
 		{
 			testName:     "upgrade release with no chart_url without dependencies should upgrade successfully",
@@ -44,16 +68,33 @@ func TestUpgradeReleaseWithoutDependencies(t *testing.T) {
 			chartName:    "influxdb",
 			chartVersion: "3.0.2",
 			err:          nil,
+			helmCRS: []*unstructured.Unstructured{
+				{
+					Object: map[string]interface{}{
+						"apiVersion": "helm.openshift.io/v1beta1",
+						"kind":       "HelmChartRepository",
+						"metadata": map[string]interface{}{
+							"name": "without-tls",
+						},
+						"spec": map[string]interface{}{
+							"connectionConfig": map[string]interface{}{
+								"url": "http://localhost:8080",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
 			store := storage.Init(driver.NewMemory())
 			actionConfig := &action.Configuration{
-				Releases:     store,
-				KubeClient:   &kubefake.PrintingKubeClient{Out: ioutil.Discard},
-				Capabilities: chartutil.DefaultCapabilities,
-				Log:          func(format string, v ...interface{}) {},
+				RESTClientGetter: FakeConfig{},
+				Releases:         store,
+				KubeClient:       &kubefake.PrintingKubeClient{Out: ioutil.Discard},
+				Capabilities:     chartutil.DefaultCapabilities,
+				Log:              func(format string, v ...interface{}) {},
 			}
 
 			r := release.Release{
@@ -68,14 +109,15 @@ func TestUpgradeReleaseWithoutDependencies(t *testing.T) {
 					Metadata: &chart.Metadata{
 						Name:        "influxdb",
 						Version:     "3.0.2",
-						Annotations: map[string]string{"chart_url": "../testdata/influxdb-3.0.2.tgz"},
+						Annotations: map[string]string{"chart_url": "http://localhost:8080/charts/influxdb-3.0.2.tgz"},
 					},
 				},
 			}
-
 			store.Create(&r)
-
-			rel, err := UpgradeRelease("test-namespace", "test", tt.chartPath, nil, actionConfig)
+			client := K8sDynamicClientFromCRs(tt.helmCRS...)
+			clientInterface := k8sfake.NewSimpleClientset()
+			coreClient := clientInterface.CoreV1()
+			rel, err := UpgradeRelease("test-namespace", "test", tt.chartPath, nil, actionConfig, client, coreClient, false, "")
 			if err == nil && tt.err != nil {
 				t.Error(err)
 			}
@@ -107,9 +149,15 @@ func TestUpgradeReleaseWithoutDependencies(t *testing.T) {
 			}
 		})
 	}
+	err = ExecuteScript("./testdata/cleanupNonTls.sh")
+	require.NoError(t, err)
 }
 
 func TestUpgradeReleaseWithDependencies(t *testing.T) {
+	setSettings(settings)
+	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
+	require.NoError(t, err)
+	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
 	tests := []struct {
 		testName     string
 		chartPath    string
@@ -117,6 +165,7 @@ func TestUpgradeReleaseWithDependencies(t *testing.T) {
 		chartVersion string
 		err          error
 		values       map[string]interface{}
+		helmCRS      []*unstructured.Unstructured
 	}{
 		{
 			testName:     "upgrade release with no chart_url with dependencies should upgrade successfully",
@@ -125,18 +174,37 @@ func TestUpgradeReleaseWithDependencies(t *testing.T) {
 			chartVersion: "1.0.0",
 			err:          nil,
 			values:       map[string]interface{}{"build": map[string]interface{}{"uri": "https://github.com/wildfly/quickstart.git"}},
+			helmCRS: []*unstructured.Unstructured{
+				{
+					Object: map[string]interface{}{
+						"apiVersion": "helm.openshift.io/v1beta1",
+						"kind":       "HelmChartRepository",
+						"metadata": map[string]interface{}{
+							"name": "without-tls",
+						},
+						"spec": map[string]interface{}{
+							"connectionConfig": map[string]interface{}{
+								"url": "http://localhost:8080",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
 			store := storage.Init(driver.NewMemory())
 			actionConfig := &action.Configuration{
-				Releases:     store,
-				KubeClient:   &kubefake.PrintingKubeClient{Out: ioutil.Discard},
-				Capabilities: chartutil.DefaultCapabilities,
-				Log:          func(format string, v ...interface{}) {},
+				RESTClientGetter: FakeConfig{},
+				Releases:         store,
+				KubeClient:       &kubefake.PrintingKubeClient{Out: ioutil.Discard},
+				Capabilities:     chartutil.DefaultCapabilities,
+				Log:              func(format string, v ...interface{}) {},
 			}
-
+			client := K8sDynamicClientFromCRs(tt.helmCRS...)
+			clientInterface := k8sfake.NewSimpleClientset()
+			coreClient := clientInterface.CoreV1()
 			r := release.Release{
 				Name:      "test",
 				Namespace: "test-namespace",
@@ -149,14 +217,14 @@ func TestUpgradeReleaseWithDependencies(t *testing.T) {
 					Metadata: &chart.Metadata{
 						Name:        "wildfly",
 						Version:     "1.0.0",
-						Annotations: map[string]string{"chart_url": "../testdata/wildfly-1.0.0.tgz"},
+						Annotations: map[string]string{"chart_url": "http://localhost:8080/charts/wildfly-1.0.0.tgz"},
 					},
 				},
 			}
 
 			store.Create(&r)
 
-			rel, err := UpgradeRelease("test-namespace", "test", tt.chartPath, tt.values, actionConfig)
+			rel, err := UpgradeRelease("test-namespace", "test", tt.chartPath, tt.values, actionConfig, client, coreClient, true, "")
 			if err == nil && tt.err != nil {
 				t.Error(err)
 			}
@@ -217,13 +285,16 @@ func TestUpgradeNonExistRelease(t *testing.T) {
 		t.Run(tt.testName, func(t *testing.T) {
 			store := storage.Init(driver.NewMemory())
 			actionConfig := &action.Configuration{
-				Releases:     store,
-				KubeClient:   &kubefake.PrintingKubeClient{Out: ioutil.Discard},
-				Capabilities: chartutil.DefaultCapabilities,
-				Log:          func(format string, v ...interface{}) {},
+				RESTClientGetter: FakeConfig{},
+				Releases:         store,
+				KubeClient:       &kubefake.PrintingKubeClient{Out: ioutil.Discard},
+				Capabilities:     chartutil.DefaultCapabilities,
+				Log:              func(format string, v ...interface{}) {},
 			}
-
-			_, err := UpgradeRelease("test-namespace", "test", tt.chartPath, nil, actionConfig)
+			client := K8sDynamicClientFromCRs()
+			clientInterface := k8sfake.NewSimpleClientset()
+			coreClient := clientInterface.CoreV1()
+			_, err := UpgradeRelease("test-namespace", "test", tt.chartPath, nil, actionConfig, client, coreClient, true, "")
 			if err == nil && tt.err != nil {
 				t.Error(err)
 			}
@@ -235,6 +306,10 @@ func TestUpgradeNonExistRelease(t *testing.T) {
 }
 
 func TestUpgradeReleaseWithCustomValues(t *testing.T) {
+	setSettings(settings)
+	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
+	require.NoError(t, err)
+	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
 	tests := []struct {
 		testName     string
 		chartPath    string
@@ -242,28 +317,48 @@ func TestUpgradeReleaseWithCustomValues(t *testing.T) {
 		chartVersion string
 		values       map[string]interface{}
 		err          error
+		helmCRS      []*unstructured.Unstructured
 	}{
 		{
 			testName:     "upgrade valid release with custom values should return successful response",
-			chartPath:    "../testdata/influxdb-3.0.2.tgz",
+			chartPath:    "http://localhost:8080/charts/influxdb-3.0.2.tgz",
 			chartName:    "influxdb",
 			chartVersion: "3.0.2",
 			values: map[string]interface{}{
 				"service": map[string]interface{}{"type": "NodePort"},
 			},
 			err: nil,
+			helmCRS: []*unstructured.Unstructured{
+				{
+					Object: map[string]interface{}{
+						"apiVersion": "helm.openshift.io/v1beta1",
+						"kind":       "HelmChartRepository",
+						"metadata": map[string]interface{}{
+							"name": "without-tls",
+						},
+						"spec": map[string]interface{}{
+							"connectionConfig": map[string]interface{}{
+								"url": "http://localhost:8080",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
 			store := storage.Init(driver.NewMemory())
 			actionConfig := &action.Configuration{
-				Releases:     store,
-				KubeClient:   &kubefake.PrintingKubeClient{Out: ioutil.Discard},
-				Capabilities: chartutil.DefaultCapabilities,
-				Log:          func(format string, v ...interface{}) {},
+				RESTClientGetter: FakeConfig{},
+				Releases:         store,
+				KubeClient:       &kubefake.PrintingKubeClient{Out: ioutil.Discard},
+				Capabilities:     chartutil.DefaultCapabilities,
+				Log:              func(format string, v ...interface{}) {},
 			}
-
+			client := K8sDynamicClientFromCRs(tt.helmCRS...)
+			clientInterface := k8sfake.NewSimpleClientset()
+			coreClient := clientInterface.CoreV1()
 			r := release.Release{
 				Name:      "test",
 				Namespace: "test-namespace",
@@ -276,14 +371,14 @@ func TestUpgradeReleaseWithCustomValues(t *testing.T) {
 					Metadata: &chart.Metadata{
 						Name:        "influxdb",
 						Version:     "3.0.2",
-						Annotations: map[string]string{"chart_url": "../testdata/influxdb-3.0.2.tgz"},
+						Annotations: map[string]string{"chart_url": "http://localhost:8080/charts/influxdb-3.0.2.tgz"},
 					},
 				},
 			}
 
 			store.Create(&r)
 
-			rel, err := UpgradeRelease("test-namespace", "test", tt.chartPath, tt.values, actionConfig)
+			rel, err := UpgradeRelease("test-namespace", "test", tt.chartPath, tt.values, actionConfig, client, coreClient, true, "")
 			if err == nil && tt.err != nil {
 				t.Error(err)
 			}

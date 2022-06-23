@@ -42,12 +42,11 @@ const (
 )
 
 type helmRepo struct {
-	Name        string
-	Namespace   string
-	URL         *url.URL
-	Disabled    bool
-	Annotations map[string]string
-	httpClient  func() (*http.Client, error)
+	Name       string
+	Namespace  string
+	URL        *url.URL
+	Disabled   bool
+	httpClient func() (*http.Client, error)
 }
 
 func httpClient(tlsConfig *tls.Config) (*http.Client, error) {
@@ -143,7 +142,6 @@ func (b helmRepoGetter) unmarshallConfig(repo unstructured.Unstructured) (*helmR
 	if err != nil {
 		return nil, err
 	}
-	h.Annotations = repo.GetAnnotations()
 
 	caReference, _, err := unstructured.NestedString(repo.Object, "spec", "connectionConfig", "ca", "name")
 	if err != nil {

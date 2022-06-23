@@ -1,19 +1,85 @@
 package actions
 
 import (
+	"context"
+	"fmt"
+	"os"
 	"strings"
 
+	"github.com/openshift/api/helm/v1beta1"
 	"github.com/openshift/console/pkg/helm/metrics"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/release"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *action.Configuration) (*release.Release, error) {
+func setUpAuthenticationUpgrade(cmd *action.Upgrade, connectionConfig *v1beta1.ConnectionConfig, coreClient corev1client.CoreV1Interface) ([]*os.File, error) {
+	tlsFiles := []*os.File{}
+	var tlsConfigNamespace, configMapName, secretName string
+	//set up tls cert and key
+	if connectionConfig.TLSClientConfig != nil {
+		secretName = connectionConfig.TLSClientConfig.Name
+		tlsConfigNamespace = connectionConfig.TLSClientConfig.Namespace
+		if tlsConfigNamespace == "" {
+			tlsConfigNamespace = configNamespace
+		}
+		secret, err := coreClient.Secrets(tlsConfigNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("Failed to GET secret %s from %vreason %v", secretName, tlsConfigNamespace, err)
+		}
+		tlsCertBytes, found := secret.Data[tlsSecretCertKey]
+		if !found {
+			return nil, fmt.Errorf("Failed to find %s key in secret %s", tlsSecretCertKey, secretName)
+		}
+		tlsCertFile, err := writeTempFile((tlsCertBytes), tlsSecretPattern)
+		if err != nil {
+			return nil, err
+		}
+		cmd.ChartPathOptions.CertFile = tlsCertFile.Name()
+		tlsFiles = append(tlsFiles, tlsCertFile)
+		tlsKeyBytes, found := secret.Data[tlsSecretKey]
+		if !found {
+			return nil, fmt.Errorf("Failed to find %s key in secret %s", tlsSecretKey, secretName)
+		}
+		tlsKeyFile, err := writeTempFile(tlsKeyBytes, tlsKeyPattern)
+		if err != nil {
+			return nil, err
+		}
+		cmd.ChartPathOptions.KeyFile = tlsKeyFile.Name()
+		tlsFiles = append(tlsFiles, tlsKeyFile)
+	}
+	//set up ca certificate
+	if connectionConfig.CA != nil {
+		configMapName = connectionConfig.CA.Name
+		configMap, err := coreClient.ConfigMaps(configNamespace).Get(context.TODO(), configMapName, v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("Failed to GET configmap %s, reason %v", configMapName, err)
+		}
+		caCertBytes, found := configMap.Data[caBundleKey]
+		if !found {
+			return nil, fmt.Errorf("Failed to find %s key in configmap %s", caBundleKey, configMapName)
+		}
+		caCertFile, caCertGetErr := writeTempFile([]byte(caCertBytes), "cacert-*")
+		if caCertGetErr != nil {
+			return nil, caCertGetErr
+		}
+		cmd.ChartPathOptions.CaFile = caCertFile.Name()
+		tlsFiles = append(tlsFiles, caCertFile)
+	}
+	return tlsFiles, nil
+}
+func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *action.Configuration, dynamicClient dynamic.Interface, coreClient corev1client.CoreV1Interface, fileCleanUp bool, repositoryName string) (*release.Release, error) {
 	client := action.NewUpgrade(conf)
 	client.Namespace = ns
-
+	tlsFiles := []*os.File{}
+	fmt.Println("-----------------------------")
+	fmt.Println("Name", name)
+	fmt.Println("UrL", url)
+	fmt.Println("-----------------------------")
 	var ch *chart.Chart
 
 	rel, err := GetRelease(name, conf)
@@ -37,7 +103,24 @@ func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *act
 	if url == "" {
 		ch = rel.Chart
 	} else {
-		cp, err := client.ChartPathOptions.LocateChart(url, settings)
+		if repositoryName == "" || ns == "" {
+			repositoryName, _, err = getRepositoryNameAndNamespaceFromChartUrl(url, ns, dynamicClient, coreClient)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		connectionConfig, err := getRepoConnectionConfig(repositoryName, ns, dynamicClient)
+		if err != nil {
+			return nil, err
+		}
+		tlsFiles, err = setUpAuthenticationUpgrade(client, connectionConfig, coreClient)
+		if err != nil {
+			return nil, err
+		}
+		client.ChartPathOptions.RepoURL = connectionConfig.URL
+		chartName := getChartNameFromUrl(url)
+		cp, err := client.ChartPathOptions.LocateChart(chartName, settings)
 		if err != nil {
 			return nil, err
 		}
@@ -70,6 +153,14 @@ func UpgradeRelease(ns, name, url string, vals map[string]interface{}, conf *act
 	if ch.Metadata.Name != "" && ch.Metadata.Version != "" {
 		metrics.HandleconsoleHelmUpgradesTotal(ch.Metadata.Name, ch.Metadata.Version)
 	}
-
+	// remove all the tls related files created by this process
+	defer func() {
+		if fileCleanUp == false {
+			return
+		}
+		for _, f := range tlsFiles {
+			os.Remove(f.Name())
+		}
+	}()
 	return rel, nil
 }

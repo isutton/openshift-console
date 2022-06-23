@@ -28,6 +28,7 @@ func (f FakeConfig) ToRESTConfig() (config *rest.Config, err error) {
 }
 
 func TestInstallChart(t *testing.T) {
+	setSettings(settings)
 	err := ExecuteScript("./testdata/chartmuseumWithoutTls.sh")
 	require.NoError(t, err)
 	err = ExecuteScript("./testdata/uploadChartsWithoutTls.sh")
@@ -96,7 +97,7 @@ func TestInstallChart(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset()
 			coreClient := clientInterface.CoreV1()
-			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, true)
+			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, true, "")
 			if tt.releaseName == "valid chart path" {
 				if err != nil {
 					t.Error("Error occurred while installing chartPath")
@@ -133,6 +134,7 @@ func TestInstallChart(t *testing.T) {
 func TestInstallChartWithTlsData(t *testing.T) {
 	//create the server.key and server.crt
 	//create the server.key and server.crt
+	setSettings(settings)
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
 	require.NoError(t, err)
 	//start chartmuseum server
@@ -232,7 +234,7 @@ func TestInstallChartWithTlsData(t *testing.T) {
 			client := K8sDynamicClientFromCRs(tt.helmCRS...)
 			clientInterface := k8sfake.NewSimpleClientset(objs...)
 			coreClient := clientInterface.CoreV1()
-			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, false)
+			rel, err := InstallChart("test", tt.releaseName, tt.chartPath, nil, actionConfig, client, coreClient, false, "")
 			require.NoError(t, err)
 			require.Equal(t, tt.releaseName, rel.Name)
 		})

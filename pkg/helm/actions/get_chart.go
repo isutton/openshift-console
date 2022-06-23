@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/openshift/console/pkg/helm/chartproxy"
 	"helm.sh/helm/v3/pkg/action"
@@ -48,6 +49,7 @@ func writeTempFile(data []byte, pattern string) (*os.File, error) {
 }
 
 func getRepositoryNameAndNamespaceFromChartUrl(url, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (string, string, error) {
+	//generate the index.yaml using the
 	repoGetter := chartproxy.NewRepoGetter(client, coreClient)
 	helmRepo, err := repoGetter.List(namespace)
 	if err != nil {
@@ -55,22 +57,49 @@ func getRepositoryNameAndNamespaceFromChartUrl(url, namespace string, client dyn
 	}
 	//iterate the chart repo and find the repo with url
 	for _, repo := range helmRepo {
-		val, ok := repo.Annotations[chartRepoPrefix]
-		if ok && strings.HasPrefix(url, val) {
-			return repo.Name, repo.Namespace, nil
-		} else if strings.HasPrefix(url, repo.URL.String()) {
-			return repo.Name, repo.Namespace, nil
+		idx, err := repo.IndexFile()
+		if err != nil {
+			return "", "", fmt.Errorf("Error In Finding the chart repositories")
+		}
+		for _, entry := range idx.Entries {
+			for _, chartVersion := range entry {
+				for _, urlFromCvs := range chartVersion.URLs {
+					if url == urlFromCvs {
+						return repo.Name, repo.Namespace, nil
+					}
+				}
+			}
 		}
 	}
-	return "", "", fmt.Errorf("Prefix Not Found")
+	return "", "", fmt.Errorf("Chart Not Found")
 }
-
-func GetChart(url string, conf *action.Configuration, ns string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool) (*chart.Chart, error) {
-	cmd := action.NewInstall(conf)
-	repositoryName, repositoryNamespace, err := getRepositoryNameAndNamespaceFromChartUrl(url, ns, client, coreClient)
-	if err != nil {
-		return nil, err
+func FindStartOfIndex(chartNameWithTarRef string) int {
+	for i := 1; i < len(chartNameWithTarRef); i++ {
+		if chartNameWithTarRef[i-1] == '-' && unicode.IsNumber(rune(chartNameWithTarRef[i])) {
+			return i - 1
+		}
 	}
+	return 0
+}
+func getChartNameFromUrl(url string) string {
+	paths := strings.Split(url, "/")
+	startOfTar := FindStartOfIndex(paths[len(paths)-1])
+	//names := strings.Split(paths[len(paths)-1], "-")
+	fmt.Println("------------------")
+	fmt.Println(paths[len(paths)-1][0:startOfTar])
+	fmt.Println("------------------")
+	return paths[len(paths)-1][0:startOfTar]
+}
+func GetChart(url string, conf *action.Configuration, repositoryNamespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool, repositoryName string) (*chart.Chart, error) {
+	var err error
+	cmd := action.NewInstall(conf)
+	if repositoryName == "" || repositoryNamespace == "" {
+		repositoryName, repositoryNamespace, err = getRepositoryNameAndNamespaceFromChartUrl(url, repositoryNamespace, client, coreClient)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	connectionConfig, err := getRepoConnectionConfig(repositoryName, repositoryNamespace, client)
 	if err != nil {
 		return nil, err
@@ -80,21 +109,14 @@ func GetChart(url string, conf *action.Configuration, ns string, client dynamic.
 	tlsFiles, err := setUpAuthentication(cmd, connectionConfig, coreClient)
 	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
 	// downloads and caches the chart from the given url
-	paths := strings.Split(url, "/")
-	names := strings.Split(paths[len(paths)-1], "-")
-	fmt.Println("------------------")
-	fmt.Println(names[0], cmd.ChartPathOptions.RepoURL)
-	fmt.Println("------------------")
-	chartLocation, locateChartErr := cmd.ChartPathOptions.LocateChart(names[0], settings)
+	chartName := getChartNameFromUrl(url)
+	chartLocation, locateChartErr := cmd.ChartPathOptions.LocateChart(chartName, settings)
 	fmt.Println("Locate Error", locateChartErr)
 	if locateChartErr != nil {
 		return nil, locateChartErr
 	}
 	defer func() {
 		if filesCleanup == false {
-			for _, f := range tlsFiles {
-				fmt.Println(f.Name())
-			}
 			return
 		}
 		for _, f := range tlsFiles {

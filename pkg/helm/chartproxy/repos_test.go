@@ -519,7 +519,6 @@ func TestHelmRepoGetter_SkipDisabled(t *testing.T) {
 
 func TestHelmRepoGetter_unmarshallConfig(t *testing.T) {
 	//create the server.key and server.crt
-	os.Setenv("HELM_CLEANUP", "0")
 	//create the server.key and server.crt
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
 	require.NoError(t, err)
