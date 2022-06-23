@@ -50,30 +50,39 @@ func writeTempFile(data []byte, pattern string) (*os.File, error) {
 	return f, nil
 }
 
-func getRepositoryNameAndNamespaceFromChartUrl(url, namespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface) (string, string, error) {
-	//generate the index.yaml using the
-	repoGetter := chartproxy.NewRepoGetter(client, coreClient)
-	helmRepo, err := repoGetter.List(namespace)
+// getRepositoryNameAndNamespaceFromChartUrl returns the name and namespace of
+// the repository containing the given `url`.
+//
+// This function works by listing all available Helm Chart repositories (either
+// scoped by the given `namespace` or cluster scoped), then comparing URLs of
+// all existing charts in the repository manifest to match the given `chartUrl`.
+func getRepositoryNameAndNamespaceFromChartUrl(
+	chartUrl string,
+	namespace string,
+	client dynamic.Interface,
+	coreClient corev1client.CoreV1Interface,
+) (string, string, error) {
+	repositories, err := chartproxy.NewRepoGetter(client, coreClient).List(namespace)
 	if err != nil {
-		return "", "", fmt.Errorf("Error In Finding the chart repositories")
+		return "", "", fmt.Errorf("error listing repositories: %w", err)
 	}
-	//iterate the chart repo and find the repo with url
-	for _, repo := range helmRepo {
-		idx, err := repo.IndexFile()
+
+	for _, repository := range repositories {
+		idx, err := repository.IndexFile()
 		if err != nil {
-			return "", "", fmt.Errorf("Error In Finding the chart repositories")
+			return "", "", fmt.Errorf("error producing the index file of repository %q in namespace %q", repository.Name, repository.Namespace)
 		}
-		for _, entry := range idx.Entries {
-			for _, chartVersion := range entry {
-				for _, urlFromCvs := range chartVersion.URLs {
-					if url == urlFromCvs {
-						return repo.Name, repo.Namespace, nil
+		for _, chartVersions := range idx.Entries {
+			for _, chartVersion := range chartVersions {
+				for _, url := range chartVersion.URLs {
+					if chartUrl == url {
+						return repository.Name, repository.Namespace, nil
 					}
 				}
 			}
 		}
 	}
-	return "", "", fmt.Errorf("Chart Not Found")
+	return "", "", fmt.Errorf("could not find a repository for the chart url %q in namespace %q", chartUrl, namespace)
 }
 func FindStartOfIndex(chartNameWithTarRef string) int {
 	for i := 1; i < len(chartNameWithTarRef); i++ {
