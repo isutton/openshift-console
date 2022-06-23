@@ -29,6 +29,8 @@ const (
 	openshiftChartUrlPrefix = "https://github.com/openshift-helm-charts/"
 )
 
+// writeTempFile creates a temporary file with the given `data`. `pattern`
+// is used by `os.CreateTemp` to create a file in the filesystem.
 func writeTempFile(data []byte, pattern string) (*os.File, error) {
 	f, createErr := os.CreateTemp("", pattern)
 	if createErr != nil {
