@@ -96,23 +96,7 @@ func getChartInfoFromChartUrl(
 	}
 	return nil, fmt.Errorf("could not find a repository for the chart url %q in namespace %q", chartUrl, namespace)
 }
-func FindStartOfIndex(chartNameWithTarRef string) int {
-	for i := 1; i < len(chartNameWithTarRef); i++ {
-		if chartNameWithTarRef[i-1] == '-' && unicode.IsNumber(rune(chartNameWithTarRef[i])) {
-			return i - 1
-		}
-	}
-	return 0
-}
-func getChartNameFromUrl(url string) string {
-	paths := strings.Split(url, "/")
-	startOfTar := FindStartOfIndex(paths[len(paths)-1])
-	//names := strings.Split(paths[len(paths)-1], "-")
-	fmt.Println("------------------")
-	fmt.Println(paths[len(paths)-1][0:startOfTar])
-	fmt.Println("------------------")
-	return paths[len(paths)-1][0:startOfTar]
-}
+
 func GetChart(url string, conf *action.Configuration, repositoryNamespace string, client dynamic.Interface, coreClient corev1client.CoreV1Interface, filesCleanup bool, repositoryName string) (*chart.Chart, error) {
 	var err error
 	var chartInfo *ChartInfo
