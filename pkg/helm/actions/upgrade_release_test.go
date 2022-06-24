@@ -263,6 +263,8 @@ func TestUpgradeReleaseWithDependencies(t *testing.T) {
 			}
 		})
 	}
+	err = ExecuteScript("./testdata/cleanupNonTls.sh")
+	require.NoError(t, err)
 }
 
 func TestUpgradeNonExistRelease(t *testing.T) {
@@ -418,6 +420,8 @@ func TestUpgradeReleaseWithCustomValues(t *testing.T) {
 			}
 		})
 	}
+	err = ExecuteScript("./testdata/cleanupNonTls.sh")
+	require.NoError(t, err)
 }
 
 func assertValues(t *testing.T, expected map[string]interface{}, received map[string]interface{}) {

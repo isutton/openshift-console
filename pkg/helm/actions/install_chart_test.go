@@ -133,7 +133,6 @@ func TestInstallChart(t *testing.T) {
 
 func TestInstallChartWithTlsData(t *testing.T) {
 	//create the server.key and server.crt
-	//create the server.key and server.crt
 	setSettings(settings)
 	err := ExecuteScript("./testdata/createTlsSecrets.sh")
 	require.NoError(t, err)

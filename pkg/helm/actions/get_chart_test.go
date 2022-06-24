@@ -71,6 +71,29 @@ func TestGetChartWithoutTls(t *testing.T) {
 			chartPath: "../testdata/invalid.tgz",
 			errorMsg:  `Chart Not Found`,
 		},
+		{
+			name:      "Not Valid chart url",
+			chartPath: "http://localhost:8080/charts/mariadb-7.3.6.tgz",
+			chartName: "mariadb",
+			namespace: "",
+			errorMsg:  `Chart Not Found`,
+			helmCRS: []*unstructured.Unstructured{
+				{
+					Object: map[string]interface{}{
+						"apiVersion": "helm.openshift.io/v1beta1",
+						"kind":       "HelmChartRepository",
+						"metadata": map[string]interface{}{
+							"name": "without-tls",
+						},
+						"spec": map[string]interface{}{
+							"connectionConfig": map[string]interface{}{
+								"url": "http://localhost:8080",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	store := storage.Init(driver.NewMemory())
 	actionConfig := &action.Configuration{
@@ -87,6 +110,9 @@ func TestGetChartWithoutTls(t *testing.T) {
 			coreClient := clientInterface.CoreV1()
 			chart, err := GetChart(test.chartPath, actionConfig, test.namespace, client, coreClient, true, "")
 			fmt.Println(err)
+			if test.name == "Not Valid chart url" {
+				require.Error(t, err)
+			}
 			if err != nil && err.Error() != test.errorMsg {
 				t.Errorf("Expected error %s but got %s", test.errorMsg, err.Error())
 			}
