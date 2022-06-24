@@ -53,11 +53,12 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 	if err != nil {
 		return nil, err
 	}
+	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
+
 	tlsFiles, err = setUpAuthentication(cmd.ChartPathOptions, connectionConfig, coreClient)
 	if err != nil {
 		return nil, err
 	}
-	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
 	cmd.ReleaseName = name
 	cp, err := cmd.ChartPathOptions.LocateChart(chartInfo.Name, settings)
 	if err != nil {
