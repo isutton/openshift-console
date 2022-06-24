@@ -114,9 +114,13 @@ func GetChart(url string, conf *action.Configuration, repositoryNamespace string
 	if err != nil {
 		return nil, err
 	}
-
-	tlsFiles, err := setUpAuthentication(cmd, connectionConfig, coreClient)
 	cmd.ChartPathOptions.RepoURL = connectionConfig.URL
+
+	tlsFiles, err := setUpAuthentication(cmd.ChartPathOptions, connectionConfig, coreClient)
+	if err != nil {
+		return nil, fmt.Errorf("error setting up authentication: %w", err)
+	}
+
 	chartLocation, locateChartErr := cmd.ChartPathOptions.LocateChart(chartInfo.Name, settings)
 	fmt.Println("Locate Error", locateChartErr)
 	if locateChartErr != nil {
