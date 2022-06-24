@@ -102,12 +102,13 @@ func GetChart(url string, conf *action.Configuration, repositoryNamespace string
 	var chartInfo *ChartInfo
 
 	cmd := action.NewInstall(conf)
-	if repositoryName == "" || repositoryNamespace == "" {
+
 		chartInfo, err = getChartInfoFromChartUrl(url, repositoryNamespace, client, coreClient)
 		if err != nil {
 			return nil, err
 		}
-	}
+
+	cmd.ChartPathOptions.Version = chartInfo.Version
 
 	connectionConfig, err := getRepositoryConnectionConfig(chartInfo.RepositoryName, chartInfo.RepositoryNamespace, client)
 	if err != nil {
