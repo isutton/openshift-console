@@ -101,10 +101,10 @@ func GetChart(url string, conf *action.Configuration, repositoryNamespace string
 
 	cmd := action.NewInstall(conf)
 
-		chartInfo, err = getChartInfoFromChartUrl(url, repositoryNamespace, client, coreClient)
-		if err != nil {
-			return nil, err
-		}
+	chartInfo, err = getChartInfoFromChartUrl(url, repositoryNamespace, client, coreClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cmd.ChartPathOptions.Version = chartInfo.Version
 
