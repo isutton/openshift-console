@@ -47,6 +47,7 @@ func InstallChart(ns, name, url string, vals map[string]interface{}, conf *actio
 			return nil, err
 		}
 	}
+	cmd.ChartPathOptions.Version = chartInfo.Version
 
 	connectionConfig, err := getRepositoryConnectionConfig(repositoryName, ns, client)
 	if err != nil {
