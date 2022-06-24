@@ -79,14 +79,14 @@ func getChartInfoFromChartUrl(
 		if err != nil {
 			return nil, fmt.Errorf("error producing the index file of repository %q in namespace %q", repository.Name, repository.Namespace)
 		}
-		for _, chartVersions := range idx.Entries {
+		for chartIndex, chartVersions := range idx.Entries {
 			for _, chartVersion := range chartVersions {
 				for _, url := range chartVersion.URLs {
 					if chartUrl == url {
 						return &ChartInfo{
 							RepositoryName:      repository.Name,
 							RepositoryNamespace: repository.Namespace,
-							Name:                chartVersion.Name,
+							Name:                chartIndex,
 							Version:             chartVersion.Version,
 						}, nil
 					}
